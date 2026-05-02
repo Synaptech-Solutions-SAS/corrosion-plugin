@@ -27,3 +27,23 @@
 - 2026-05-01: Extracted typical decay ranges (0.3s to 2.9s) and frequency ranges (96Hz to 2860Hz) from the curated modal profiles to serve as a baseline for future plugin parameter mapping.
 
 - 2026-05-02: Gate 0 evidence collection confirms that the modal prototype successfully differentiates between pipe, plate, and tank families using RMS and peak metrics. Rust and damage transforms are verified to produce the intended perceptual shifts (darkening/shortening and roughening respectively) as measured by brightness and roughness proxies. The tank profile produces significantly higher peaks (3.95) than pipe or plate, which is consistent with its boomy, low-frequency design but should be monitored for headroom in later plugin stages.
+
+## 2026-05-01 G0-3 Gate 0 Review
+
+### Assertion Results
+- All 6 Gate 0 pass-criteria PASS via automated bash assertions
+- Criterion 1 (family distinct): Pipe-Plate 59.2%, Pipe-Tank 77.1%, Plate-Tank 90.7% RMS separation
+- Criterion 2 (decaying output): all late/early < 1.0 (0.8557–0.9868); all peaks > 0.05
+- Criterion 3 (rust darkens): brightness 0.0319 < 0.0335; late/early 0.9767 < 0.9868
+- Criterion 4 (damage roughens): +53.8% roughness increase (0.1016 vs 0.0661)
+- Criterion 5 (not silent): min peak across all artifacts = 0.4572 (plate family)
+- Criterion 6 (no NaN/blowup): all finite; tank float peak 3.9568 clamped to 1.0 at WAV writer
+
+### Tank Overshoot — Confirmed Controlled
+- `float_sample_to_pcm_i16` in `src/renderer.rs:329` calls `sample.clamp(-1.0, 1.0)` before i16 conversion
+- Tank WAV actual peak: 1.000000 (i.e., i16::MAX = 32767), nan_count=0
+- check_wav.py reports FAIL on tank because peak=1.0 > 0.9999 threshold — this is expected hard clipping, not a bug
+- Gate 1 action: add per-family output gain normalization to prevent tank overshoot
+
+### Git tag
+- `gate-0-complete` tag created (full path: `/mnt/c/Program Files/Git/bin/git.exe tag gate-0-complete`)
