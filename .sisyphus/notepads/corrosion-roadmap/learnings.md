@@ -25,3 +25,5 @@
 - 2026-05-01: Recorded initial parameter ranges for the Corrosion prototype. SizeScale (min 0.25, default 1.0), RustAmount (0.0-1.0), and DamageAmount (0.0-1.0) are the primary user-facing controls.
 - 2026-05-01: Documented the real-time mode budget (Pipe: 6, Plate: 8, Tank: 8) and the offline peak counts (12/16/16) which occur during full damage expansion.
 - 2026-05-01: Extracted typical decay ranges (0.3s to 2.9s) and frequency ranges (96Hz to 2860Hz) from the curated modal profiles to serve as a baseline for future plugin parameter mapping.
+
+- 2026-05-02: Gate 0 evidence collection confirms that the modal prototype successfully differentiates between pipe, plate, and tank families using RMS and peak metrics. Rust and damage transforms are verified to produce the intended perceptual shifts (darkening/shortening and roughening respectively) as measured by brightness and roughness proxies. The tank profile produces significantly higher peaks (3.95) than pipe or plate, which is consistent with its boomy, low-frequency design but should be monitored for headroom in later plugin stages.
