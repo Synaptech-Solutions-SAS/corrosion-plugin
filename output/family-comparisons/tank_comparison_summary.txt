@@ -1,0 +1,10 @@
+family=tank
+wav_path=output/family-comparisons/tank_comparison.wav
+summary_path=output/family-comparisons/tank_comparison_summary.txt
+Corrosion offline renderer scaffold
+sample_rate=48000
+frame_count=48000
+peak=3.956813097
+rms=1.460285425
+checksum=3876904354905967544
+first_samples=[0.107199997, 0.214139253, 0.320561677, 0.426215470, 0.530855536, 0.634245336, 0.736158669, 0.836382031, 0.934715509, 1.030974746, 1.124991894, 1.216617465, 1.305719852, 1.392187238, 1.475926995, 1.556866407]

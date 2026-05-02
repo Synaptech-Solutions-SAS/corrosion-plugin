@@ -1,0 +1,6 @@
+target/
+../corrotion-target/
+output/*.tmp
+.sisyphus/evidence/*.tmp
+__pycache__/
+*.pyc

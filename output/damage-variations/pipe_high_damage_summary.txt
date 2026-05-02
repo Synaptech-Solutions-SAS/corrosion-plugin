@@ -1,0 +1,16 @@
+profile=pipe
+variant=high_damage
+damage_amount=0.850
+wav_path=output/damage-variations/pipe_high_damage.wav
+summary_path=output/damage-variations/pipe_high_damage_summary.txt
+Corrosion offline renderer scaffold
+sample_rate=48000
+frame_count=48000
+peak=0.987587512
+rms=0.332030684
+checksum=9023600758791334886
+first_samples=[0.076958731, 0.153176144, 0.227928355, 0.300518364, 0.370288432, 0.436632156, 0.499004513, 0.556931078, 0.610015690, 0.657945871, 0.700496554, 0.737532198, 0.769006729, 0.794960678, 0.815518141, 0.830881357]
+zero_crossings=19
+brightness_proxy=0.039240412
+late_to_early_energy_ratio=0.855724692
+roughness_proxy=0.101566449

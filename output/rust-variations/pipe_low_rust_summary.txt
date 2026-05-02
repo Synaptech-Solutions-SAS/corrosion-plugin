@@ -1,0 +1,16 @@
+profile=pipe
+variant=low_rust
+rust_amount=0.250
+wav_path=output/rust-variations/pipe_low_rust.wav
+summary_path=output/rust-variations/pipe_low_rust_summary.txt
+Corrosion offline renderer scaffold
+sample_rate=48000
+frame_count=48000
+peak=0.700275242
+rms=0.308497339
+checksum=549757922344347805
+first_samples=[0.053432252, 0.106409572, 0.158486873, 0.209234521, 0.258245558, 0.305142522, 0.349583626, 0.391267866, 0.429939598, 0.465392023, 0.497469485, 0.526068687, 0.551139116, 0.572681844, 0.590747833, 0.605434835]
+zero_crossings=19
+brightness_proxy=0.033543292
+late_to_early_energy_ratio=0.986776412
+roughness_proxy=0.004929468

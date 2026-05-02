@@ -1,0 +1,16 @@
+   Compiling corrotion v0.1.0 (/mnt/c/Users/usuario/Documents/Projects/corrotion-vst)
+error[E0463]: can't find crate for `std`
+  |
+  = note: the `x86_64-unknown-linux-musl` target may not be installed
+  = help: consider downloading the target with `rustup target add x86_64-unknown-linux-musl`
+
+For more information about this error, try `rustc --explain E0463`.
+error: could not compile `corrotion` (bin "corrotion" test) due to 1 previous error
+   Compiling corrotion v0.1.0 (/mnt/c/Users/usuario/Documents/Projects/corrotion-vst)
+error[E0463]: can't find crate for `std`
+  |
+  = note: the `x86_64-unknown-linux-musl` target may not be installed
+  = help: consider downloading the target with `rustup target add x86_64-unknown-linux-musl`
+
+For more information about this error, try `rustc --explain E0463`.
+error: could not compile `corrotion` (bin "corrotion") due to 1 previous error

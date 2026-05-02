@@ -1,0 +1,24 @@
+{
+  "active_plan": "/mnt/c/Users/usuario/Documents/Projects/corrotion-vst/.sisyphus/plans/corrosion-roadmap.md",
+  "started_at": "2026-05-02T00:21:13.971Z",
+  "session_ids": [
+    "ses_21a3b1898ffeji0IvrkX6DwQLg",
+    "ses_21a3b1898ffeji0IvrkX6DwQLg"
+  ],
+  "session_origins": {
+    "ses_21a3b1898ffeji0IvrkX6DwQLg": "direct"
+  },
+  "plan_name": "corrosion-roadmap",
+  "agent": "atlas",
+  "task_sessions": {
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_219ef1b69ffeQkk3ne6K9PfujE",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-02T00:27:51.106Z"
+    }
+  }
+}
