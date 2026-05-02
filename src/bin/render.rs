@@ -1,3 +1,4 @@
+#[path = "../renderer.rs"]
 mod renderer;
 
 use std::path::Path;

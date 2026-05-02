@@ -3,4 +3,11 @@ name = "corrotion"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "render"
+path = "src/bin/render.rs"
+
 [dependencies]

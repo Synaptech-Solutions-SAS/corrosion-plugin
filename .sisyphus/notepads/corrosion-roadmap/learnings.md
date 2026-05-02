@@ -47,3 +47,8 @@
 
 ### Git tag
 - `gate-0-complete` tag created (full path: `/mnt/c/Program Files/Git/bin/git.exe tag gate-0-complete`)
+
+## 2026-05-01 G1-1
+- NIH-plug git dependency can be fetched in this environment, but compiling its dependency graph requires a host `cc` linker for Rust build scripts; `cc` is missing and apt-get is unavailable, so G1-1 used the required stub fallback.
+- Moving `src/main.rs` to `src/bin/render.rs` requires `#[path = "../renderer.rs"] mod renderer;` so the bin target can keep using the untouched `src/renderer.rs`.
+- Default musl target builds the rlib and renderer successfully, but Rust drops `cdylib` for `x86_64-unknown-linux-musl`; a GNU cdylib also cannot link here because system C libraries/linker support are missing.
