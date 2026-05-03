@@ -1216,7 +1216,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-2(qa): pluginval strictness-8 evidence`.
 
-- [ ] G2-13. Scripted DAW regression suite (REAPER)
+- [x] G2-13. Scripted DAW regression suite (REAPER)
 
   **What to do**: Author a REAPER project (`tests/daw/gate-2.rpp`) that exercises: MIDI playback (32 notes, varied velocities), automation lane on every parameter, preset cycle, buffer 64/512/2048, sample rate 44.1k/48k/96k. Render via REAPER CLI and bash-verify each bounce: peak > 0.05, no NaN (via Python wave parse), file size matches expected duration.
 
