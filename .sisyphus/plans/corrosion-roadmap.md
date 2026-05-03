@@ -1037,7 +1037,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-2(params): expose Object/Size/Rust/Damage/Drive/Output`.
 
-- [ ] G2-6. Velocity-to-physical-behavior mapping
+- [x] G2-6. Velocity-to-physical-behavior mapping
 
   **What to do**: Velocity must shape excitation force AND brightness, not only output level. In hit exciter: scale impulse amplitude AND impulse high-frequency content (e.g., shorten impulse width as velocity rises) so soft hits sound dull and hard hits sound bright.
 

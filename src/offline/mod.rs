@@ -313,7 +313,7 @@ fn roughness_proxy(samples: &[f32]) -> f32 {
         / intervals.len() as f32
 }
 
-pub(crate) fn render_behavior_metrics(output: &[f32]) -> RenderBehaviorMetrics {
+pub fn render_behavior_metrics(output: &[f32]) -> RenderBehaviorMetrics {
     let frame_count = output.len();
     let early_len = (frame_count / 4).max(1);
     let late_len = frame_count - early_len;

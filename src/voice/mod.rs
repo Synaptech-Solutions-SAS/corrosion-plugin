@@ -17,6 +17,10 @@ pub struct Voice {
     peak_hold: f32,
     frames_below_threshold: u32,
     start_frame: u64,
+    excitation_value: f32,
+    excitation_state: f32,
+    excitation_decay: f32,
+    highpass_state: f32,
 }
 
 const TAIL_ENERGY_THRESHOLD: f32 = 1e-4;
@@ -34,6 +38,10 @@ impl Voice {
             peak_hold: 0.0,
             frames_below_threshold: 0,
             start_frame: 0,
+            excitation_value: 0.0,
+            excitation_state: 0.0,
+            excitation_decay: 0.5,
+            highpass_state: 0.0,
         }
     }
 
@@ -60,6 +68,12 @@ impl Voice {
             RustAmount::new(rust),
             DamageAmount::new(damage),
         );
+
+        let velocity_norm = (velocity / 127.0).clamp(0.0, 1.0);
+        self.excitation_value = velocity_norm;
+        self.excitation_state = 0.0;
+        self.excitation_decay = 0.90 - (velocity_norm * 0.70);
+        self.highpass_state = 0.0;
     }
 
     pub fn note_off(&mut self) {
@@ -83,14 +97,22 @@ impl Voice {
     }
 
     pub fn process_sample(&mut self, sample_rate: u32) -> f32 {
-        let excitation = if !self.excitation_sent && self.velocity > 0.0 {
-            self.excitation_sent = true;
-            self.velocity / 127.0
+        let velocity_norm = self.velocity / 127.0;
+
+        let excitation = if self.excitation_value > 0.0 {
+            let value = self.excitation_value;
+            self.excitation_value *= self.excitation_decay;
+            if self.excitation_value < 1e-6 {
+                self.excitation_value = 0.0;
+            }
+            value
         } else {
             0.0
         };
 
-        let sample = self.resonator.process_sample(excitation, sample_rate);
+        let filtered_excitation = excitation;
+
+        let sample = self.resonator.process_sample(filtered_excitation, sample_rate);
 
         let sample = if !sample.is_finite() {
             0.0
@@ -100,7 +122,12 @@ impl Voice {
             sample
         };
 
-        let clamped = sample.clamp(-1.0, 1.0);
+        self.highpass_state = 0.8 * self.highpass_state + 0.2 * sample;
+        let highpass = sample - self.highpass_state;
+        let boost_amount = velocity_norm * 3.0;
+        let boosted_sample = sample + (highpass * boost_amount);
+
+        let clamped = boosted_sample.clamp(-1.0, 1.0);
 
         if self.active {
             self.peak_hold = self.peak_hold.max(clamped.abs());
