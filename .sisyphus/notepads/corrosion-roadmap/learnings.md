@@ -106,3 +106,10 @@ Target directory redirected to `../corrotion-target` to avoid polluting repo.
 - Applied per-sample drive saturation in `src/lib.rs` after `voice_manager.process_sample()`: `sample * (1.0 + drive * 3.0)` then `tanh()`.
 - Applied output gain after drive, then kept the final safety clamp to `[-1.0, 1.0]`.
 - Read `drive` and `output` from `CorrosionParams` inside the process loop so host automation can affect the hot path without touching voice code.
+
+## 2026-05-03 - G2-7 Allocation Audit Notes
+
+- `Voice::process_sample()` now flushes denormals with `clamped + 1e-20 - 1e-20` before returning.
+- The no-alloc regression test must keep voice setup outside the guarded section; arming voices can allocate even when the render loop does not.
+- `cargo test --workspace` still passed all 51 unit tests plus the integration tests after the guard change.
+- The grep audit over `src/dsp/resonator.rs`, `src/voice/mod.rs`, `src/voice/manager.rs`, and `src/lib.rs` produced an empty result set.

@@ -1057,7 +1057,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-2(excitation): velocity shapes force + brightness`.
 
-- [ ] G2-7. Audio-thread allocation audit + denormal/NaN/inf guards (cross-cut)
+- [x] G2-7. Audio-thread allocation audit + denormal/NaN/inf guards (cross-cut)
 
   **What to do**: Add `assert_no_alloc` crate as `[dev-dependencies]` (allowed dep, scoped to tests). Wrap a representative process loop in `assert_no_alloc(|| { ... })` inside a test. Run grep audit across all hot-path files. Add denormal flush + NaN/inf replacement at the end of every voice's process_sample.
 

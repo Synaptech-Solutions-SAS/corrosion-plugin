@@ -128,6 +128,9 @@ impl Voice {
         let boosted_sample = sample + (highpass * boost_amount);
 
         let clamped = boosted_sample.clamp(-1.0, 1.0);
+        // Denormal flush to prevent denormal number slowdown
+        const DENORMAL_FLUSH: f32 = 1e-20;
+        let flushed = clamped + DENORMAL_FLUSH - DENORMAL_FLUSH;
 
         if self.active {
             self.peak_hold = self.peak_hold.max(clamped.abs());
@@ -142,7 +145,7 @@ impl Voice {
             }
         }
 
-        clamped
+        flushed
     }
 }
 

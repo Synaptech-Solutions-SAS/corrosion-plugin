@@ -77,3 +77,8 @@ These are known limitations tracked for future gates, not blockers:
 
 - `lsp_diagnostics` required `rust-analyzer` on PATH; the binary was present in the Rust toolchain but needed a symlink into `~/.local/bin` for this environment.
 - `pluginval` validated the bundle successfully, but the external VST3 validator path was not installed, so the built-in validation suite ran without that extra validator layer.
+
+## 2026-05-03 - G2-7 Allocation Audit Issue
+
+- `assert_no_alloc` from crates.io conflicted with NIH-plug’s existing allocator setup when I tried to install a second `#[global_allocator]` in the test crate.
+- Fix: use the matching `assert_no_alloc` git source already used by NIH-plug, and keep voice setup outside the guarded render loop.
