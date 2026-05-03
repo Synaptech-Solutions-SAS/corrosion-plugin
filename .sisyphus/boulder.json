@@ -3,10 +3,18 @@
   "started_at": "2026-05-03T06:01:26.594Z",
   "session_ids": [
     "ses_21588055effeIao5ya3FPLI5qk",
-    "ses_21588055effeIao5ya3FPLI5qk"
+    "ses_21588055effeIao5ya3FPLI5qk",
+    "ses_21224a7f5ffe6DspF4HIinv7XH",
+    "ses_2122458b7ffe4SXYwtfbKCfWjh",
+    "ses_21223fe0effe7WjVCJe7cJEgUC",
+    "ses_21223acafffeEcKaT6Goh5qFvi"
   ],
   "session_origins": {
-    "ses_21588055effeIao5ya3FPLI5qk": "direct"
+    "ses_21588055effeIao5ya3FPLI5qk": "direct",
+    "ses_21224a7f5ffe6DspF4HIinv7XH": "appended",
+    "ses_2122458b7ffe4SXYwtfbKCfWjh": "appended",
+    "ses_21223fe0effe7WjVCJe7cJEgUC": "appended",
+    "ses_21223acafffeEcKaT6Goh5qFvi": "appended"
   },
   "plan_name": "corrosion-roadmap",
   "agent": "atlas",
@@ -18,10 +26,10 @@
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "**Plan Compliance Audit** — `oracle`",
-      "session_id": "ses_212a451c7fferAwgjCc68WTU22",
+      "session_id": "ses_21223acafffeEcKaT6Goh5qFvi",
       "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-05-03T10:35:12.212Z"
+      "category": "unspecified-low",
+      "updated_at": "2026-05-03T12:42:59.356Z"
     }
   }
 }
