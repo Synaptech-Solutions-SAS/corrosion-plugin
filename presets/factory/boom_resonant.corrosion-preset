@@ -1,0 +1,10 @@
+{
+  "name": "Resonant Boom",
+  "version": "1",
+  "object": "Tank",
+  "size": 1.95,
+  "rust": 0.1,
+  "damage": 0.12,
+  "drive": 0.28,
+  "output": 1.75
+}

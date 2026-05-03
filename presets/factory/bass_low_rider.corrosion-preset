@@ -1,0 +1,10 @@
+{
+  "name": "Low Rider",
+  "version": "1",
+  "object": "Tank",
+  "size": 1.6,
+  "rust": 0.35,
+  "damage": 0.2,
+  "drive": 0.4,
+  "output": 1.8
+}

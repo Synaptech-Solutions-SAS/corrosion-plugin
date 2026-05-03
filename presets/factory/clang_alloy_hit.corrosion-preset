@@ -1,0 +1,10 @@
+{
+  "name": "Alloy Hit",
+  "version": "1",
+  "object": "Pipe",
+  "size": 0.95,
+  "rust": 0.25,
+  "damage": 0.7,
+  "drive": 0.45,
+  "output": 1.25
+}

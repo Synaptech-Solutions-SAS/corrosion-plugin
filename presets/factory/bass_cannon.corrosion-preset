@@ -1,0 +1,10 @@
+{
+  "name": "Bass Cannon",
+  "version": "1",
+  "object": "Tank",
+  "size": 1.9,
+  "rust": 0.2,
+  "damage": 0.3,
+  "drive": 0.5,
+  "output": 2.0
+}

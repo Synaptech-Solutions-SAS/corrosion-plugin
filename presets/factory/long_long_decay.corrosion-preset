@@ -1,0 +1,10 @@
+{
+  "name": "Long Decay",
+  "version": "1",
+  "object": "Plate",
+  "size": 1.6,
+  "rust": 0.1,
+  "damage": 0.15,
+  "drive": 0.25,
+  "output": 1.15
+}

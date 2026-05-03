@@ -1,0 +1,10 @@
+{
+  "name": "Depth Charge",
+  "version": "1",
+  "object": "Tank",
+  "size": 1.7,
+  "rust": 0.3,
+  "damage": 0.25,
+  "drive": 0.45,
+  "output": 1.6
+}
