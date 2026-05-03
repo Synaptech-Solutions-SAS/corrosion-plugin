@@ -8,3 +8,8 @@
 
 - Test the limiter math through a small public helper instead of trying to spin up a full plugin host inside the integration test.
 - Keep the plugin-side clamp in `Corrosion::process()` as the authoritative safety gate; the integration test only guards the threshold and clamp behavior.
+
+## 2026-05-03 - Gate 2 Closure Documentation
+
+- Use a dedicated `.sisyphus/evidence/gate-2-summary.md` closure file as the canonical pass-criteria record for Gate 2.
+- Keep the gate closure tag (`gate-2-complete`) aligned with the evidence summary so future audits can jump from the tag to the closure artifact immediately.

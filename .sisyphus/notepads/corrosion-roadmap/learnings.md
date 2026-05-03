@@ -125,3 +125,8 @@ Target directory redirected to `../corrotion-target` to avoid polluting repo.
 - Exposed a tiny `apply_output_limiter()` helper so the clamp math can be regression-tested directly in `tests/limiter.rs`.
 - Native verification passed on `x86_64-unknown-linux-gnu`; the repo default musl target still needs a pkg-config sysroot for `x11` in this environment.
 - `preset-render` should resolve the fixture path from the repo root (`tests/fixtures/default.corrosion-preset`), not from `.sisyphus/`.
+
+## 2026-05-03 - Gate 2 Closure Summary
+
+- Gate 2 closed cleanly once the evidence summary was written and the pass-criteria table was reduced to explicit PASS/FAIL rows.
+- The closure file should cite concrete artifact paths for every criterion so later gate reviews do not need to infer evidence from prose.
