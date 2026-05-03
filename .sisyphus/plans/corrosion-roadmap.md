@@ -1241,7 +1241,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-2(qa): scripted REAPER regression suite`.
 
-- [ ] G2-14. DSP regression: family differentiation + transform metric assertions
+- [x] G2-14. DSP regression: family differentiation + transform metric assertions
 
   **What to do**: Re-run all Gate 0 metric assertions against the plugin output (not just offline renderer). Add `tests/plugin_metrics.rs` with: family differentiation thresholds, size monotonicity (size↑ ⇒ peak frequency↓), rust monotonicity (rust↑ ⇒ brightness↓), damage monotonicity (damage↑ ⇒ roughness↑).
 
