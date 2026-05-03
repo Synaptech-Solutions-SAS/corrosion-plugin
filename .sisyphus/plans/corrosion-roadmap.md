@@ -1259,7 +1259,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-2(qa): DSP regression suite vs Gate 0 metrics`.
 
-- [ ] G2-15. Gate 2 evidence summary + pass-criteria review
+- [x] G2-15. Gate 2 evidence summary + pass-criteria review
 
   **What to do**: Write `.sisyphus/evidence/gate-2-summary.md` with PASS/FAIL row per pass-criterion (`IMPLEMENTATION_PLAN.md:352-367` — 15 criteria). Tag `gate-2-complete` only on full pass.
 
