@@ -82,3 +82,8 @@ These are known limitations tracked for future gates, not blockers:
 
 - `assert_no_alloc` from crates.io conflicted with NIH-plug’s existing allocator setup when I tried to install a second `#[global_allocator]` in the test crate.
 - Fix: use the matching `assert_no_alloc` git source already used by NIH-plug, and keep voice setup outside the guarded render loop.
+
+## 2026-05-03 - G2-9 Smoke Test Path Mistake
+
+- First preset-render smoke run failed because the preset fixture path was resolved under `.sisyphus/` instead of the repo root.
+- Fixed by invoking the bin with `--preset tests/fixtures/default.corrosion-preset`.

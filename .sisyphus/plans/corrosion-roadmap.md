@@ -1108,7 +1108,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-2(gui): generic egui editor`.
 
-- [ ] G2-9. Preset file format + serialize/deserialize + `preset-render` helper bin
+- [x] G2-9. Preset file format + serialize/deserialize + `preset-render` helper bin
 
   **What to do**:
   - Define a `.corrosion-preset` JSON format containing: name, version, all 6 param values, object enum.

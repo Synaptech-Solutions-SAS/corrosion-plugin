@@ -113,3 +113,9 @@ Target directory redirected to `../corrotion-target` to avoid polluting repo.
 - The no-alloc regression test must keep voice setup outside the guarded section; arming voices can allocate even when the render loop does not.
 - `cargo test --workspace` still passed all 51 unit tests plus the integration tests after the guard change.
 - The grep audit over `src/dsp/resonator.rs`, `src/voice/mod.rs`, `src/voice/manager.rs`, and `src/lib.rs` produced an empty result set.
+
+## 2026-05-03 - G2-9 Preset IO Notes
+
+- NIH-plug `Plugin` in this repo version does not expose `get_state` / `load_state`; preset snapshotting has to live as inherent helpers on `Corrosion` and/or in the `Params` snapshot path.
+- The preset format works cleanly when the plugin params are rebuilt from a `Preset` and the `Arc<CorrosionParams>` is swapped on load.
+- `preset-render` should resolve the fixture path from the repo root (`tests/fixtures/default.corrosion-preset`), not from `.sisyphus/`.

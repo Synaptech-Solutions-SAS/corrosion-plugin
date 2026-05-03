@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use nih_plug::prelude::*;
 #[cfg(feature = "gui")]
 use nih_plug_egui::EguiState;
@@ -23,7 +24,8 @@ pub struct CorrosionParams {
     pub output: FloatParam,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
 pub enum Object {
     Pipe,
     Plate,
@@ -44,6 +46,14 @@ impl Object {
             Object::Pipe => "Pipe",
             Object::Plate => "Plate",
             Object::Tank => "Tank",
+        }
+    }
+
+    pub fn to_int(self) -> i32 {
+        match self {
+            Object::Pipe => 0,
+            Object::Plate => 1,
+            Object::Tank => 2,
         }
     }
 }

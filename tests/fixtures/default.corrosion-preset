@@ -1,0 +1,10 @@
+{
+  "name": "Default",
+  "version": "1",
+  "object": "Pipe",
+  "size": 1.0,
+  "rust": 0.0,
+  "damage": 0.0,
+  "drive": 0.0,
+  "output": 1.0
+}

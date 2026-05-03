@@ -1,5 +1,6 @@
 pub mod dsp;
 pub mod offline;
+pub mod presets;
 pub mod voice;
 mod params;
 
@@ -12,6 +13,7 @@ use nih_plug_egui::{create_egui_editor, egui, widgets};
 use voice::VoiceManager;
 
 pub use params::{CorrosionParams, Object};
+pub use presets::Preset;
 
 pub fn corrosion_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
@@ -27,6 +29,18 @@ impl Default for Corrosion {
         Self {
             params: Arc::new(CorrosionParams::default()),
             voice_manager: VoiceManager::new(),
+        }
+    }
+}
+
+impl Corrosion {
+    pub fn get_state(&self) -> Vec<u8> {
+        serde_json::to_vec_pretty(&Preset::from_params(Self::NAME, &self.params)).unwrap_or_default()
+    }
+
+    pub fn load_state(&mut self, state: &[u8]) {
+        if let Ok(preset) = serde_json::from_slice::<Preset>(state) {
+            self.params = Arc::new(preset.into_params());
         }
     }
 }
