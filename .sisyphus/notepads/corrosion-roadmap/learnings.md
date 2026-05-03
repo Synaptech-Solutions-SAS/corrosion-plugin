@@ -100,3 +100,9 @@ Target directory redirected to `../corrotion-target` to avoid polluting repo.
 
 - Gate 2 param expansion: keep stable `#[id]` values on every host-facing param (`object`, `size`, `rust`, `damage`, `drive`, `output`) so automation survives reordering.
 - Use `FloatParam::new(name, default, FloatRange::Linear { min, max })` for the MVP scalar controls; `Output` can stay as linear gain with a 0 dB default and +12 dB ceiling.
+
+## 2026-05-03 - Drive/Output Wiring in Process Loop
+
+- Applied per-sample drive saturation in `src/lib.rs` after `voice_manager.process_sample()`: `sample * (1.0 + drive * 3.0)` then `tanh()`.
+- Applied output gain after drive, then kept the final safety clamp to `[-1.0, 1.0]`.
+- Read `drive` and `output` from `CorrosionParams` inside the process loop so host automation can affect the hot path without touching voice code.

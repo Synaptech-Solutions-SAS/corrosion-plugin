@@ -72,3 +72,8 @@ These are known limitations tracked for future gates, not blockers:
 - macOS bundles validated via GitHub Actions CI
 
 - `lsp_diagnostics` could not run in this environment because `rust-analyzer` is not installed; build + pluginval were used instead for verification.
+
+## 2026-05-03 - Verification Tooling Alignment
+
+- `lsp_diagnostics` required `rust-analyzer` on PATH; the binary was present in the Rust toolchain but needed a symlink into `~/.local/bin` for this environment.
+- `pluginval` validated the bundle successfully, but the external VST3 validator path was not installed, so the built-in validation suite ran without that extra validator layer.

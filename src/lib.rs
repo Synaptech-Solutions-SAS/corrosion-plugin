@@ -98,7 +98,12 @@ impl Plugin for Corrosion {
                 }
             }
 
-            let sample = self.voice_manager.process_sample(sample_rate);
+            let drive = self.params.drive.value();
+            let output_gain = self.params.output.value();
+            let mut sample = self.voice_manager.process_sample(sample_rate);
+            sample = (sample * (1.0 + drive * 3.0)).tanh();
+            sample *= output_gain;
+            sample = sample.clamp(-1.0, 1.0);
             let mut idx = 0;
             for channel_sample in channel_samples.into_iter() {
                 if idx < 2 {
