@@ -1,4 +1,127 @@
-// NIH-plug stub — replace with real dependency when network is available
+pub mod dsp;
+pub mod offline;
+pub mod voice;
+mod params;
+
+use std::num::NonZeroU32;
+use std::sync::Arc;
+
+use nih_plug::prelude::*;
+use voice::VoiceManager;
+
+pub use params::{CorrosionParams, Object};
+
 pub fn corrosion_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
+
+pub struct Corrosion {
+    params: Arc<CorrosionParams>,
+    voice_manager: VoiceManager,
+}
+
+impl Default for Corrosion {
+    fn default() -> Self {
+        Self {
+            params: Arc::new(CorrosionParams::default()),
+            voice_manager: VoiceManager::new(),
+        }
+    }
+}
+
+impl Plugin for Corrosion {
+    const NAME: &'static str = "Corrosion";
+    const VENDOR: &'static str = "Corrosion Audio";
+    const URL: &'static str = "";
+    const EMAIL: &'static str = "";
+    const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
+    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
+        main_input_channels: None,
+        main_output_channels: NonZeroU32::new(2),
+        aux_input_ports: &[],
+        aux_output_ports: &[],
+        names: PortNames::const_default(),
+    }];
+
+    const MIDI_INPUT: MidiConfig = MidiConfig::Basic;
+
+    type SysExMessage = ();
+    type BackgroundTask = ();
+
+    fn params(&self) -> Arc<dyn Params> {
+        self.params.clone()
+    }
+
+    fn initialize(
+        &mut self,
+        _audio_io_layout: &AudioIOLayout,
+        _buffer_config: &BufferConfig,
+        _context: &mut impl InitContext<Self>,
+    ) -> bool {
+        true
+    }
+
+    fn reset(&mut self) {
+        self.voice_manager = VoiceManager::new();
+    }
+
+    fn process(
+        &mut self,
+        buffer: &mut Buffer,
+        _aux: &mut AuxiliaryBuffers,
+        context: &mut impl ProcessContext<Self>,
+    ) -> ProcessStatus {
+        let next_event = context.next_event();
+        let sample_rate = context.transport().sample_rate as u32;
+
+        for (sample_id, channel_samples) in buffer.iter_samples().enumerate() {
+            if let Some(event) = next_event {
+                if event.timing() == sample_id as u32 {
+                    match event {
+                        NoteEvent::NoteOn { note, velocity, .. } => {
+                            let profile = match Object::from_int(self.params.object.value()) {
+                                Object::Pipe => dsp::ModalProfileId::Pipe,
+                                Object::Plate => dsp::ModalProfileId::Plate,
+                                Object::Tank => dsp::ModalProfileId::Tank,
+                            };
+                            self.voice_manager.note_on(note, velocity as f32, profile);
+                        }
+                        NoteEvent::NoteOff { note, .. } => {
+                            self.voice_manager.note_off(note);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+
+            let sample = self.voice_manager.process_sample(sample_rate);
+            let mut idx = 0;
+            for channel_sample in channel_samples.into_iter() {
+                if idx < 2 {
+                    *channel_sample = sample;
+                }
+                idx += 1;
+            }
+        }
+
+        ProcessStatus::Normal
+    }
+}
+
+impl ClapPlugin for Corrosion {
+    const CLAP_ID: &'static str = "com.corrosion.corrotion";
+    const CLAP_DESCRIPTION: Option<&'static str> = Some("Industrial physical modeling synthesizer");
+    const CLAP_MANUAL_URL: Option<&'static str> = None;
+    const CLAP_SUPPORT_URL: Option<&'static str> = None;
+    const CLAP_FEATURES: &'static [ClapFeature] = &[ClapFeature::Instrument, ClapFeature::Synthesizer];
+}
+
+impl Vst3Plugin for Corrosion {
+    const VST3_CLASS_ID: [u8; 16] = *b"CorrosionAudio01";
+    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
+        &[Vst3SubCategory::Instrument, Vst3SubCategory::Synth];
+}
+
+nih_export_clap!(Corrosion);
+nih_export_vst3!(Corrosion);

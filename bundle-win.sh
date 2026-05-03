@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PLUGIN_NAME="Corrosion"
+TARGET="x86_64-pc-windows-gnu"
+PROFILE="${1:-release}"
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$SCRIPT_DIR"
+TARGET_DIR="${PROJECT_DIR}/../corrotion-target"
+
+echo "Building ${PLUGIN_NAME} for ${TARGET} (${PROFILE})..."
+cargo build --target "${TARGET}" --"${PROFILE}" --lib
+
+BUNDLE_DIR="${PROJECT_DIR}/target/bundled-win/${PLUGIN_NAME}.vst3"
+rm -rf "${BUNDLE_DIR}"
+mkdir -p "${BUNDLE_DIR}/Contents/x86_64-win"
+
+DLL_PATH="${TARGET_DIR}/${TARGET}/${PROFILE}/corrotion.dll"
+if [ ! -f "${DLL_PATH}" ]; then
+    echo "Error: Built library not found at ${DLL_PATH}"
+    exit 1
+fi
+
+cp "${DLL_PATH}" "${BUNDLE_DIR}/Contents/x86_64-win/${PLUGIN_NAME}.vst3"
+echo "Windows VST3 bundle created at: ${BUNDLE_DIR}"
+
+CLAP_DIR="${PROJECT_DIR}/target/bundled-win/${PLUGIN_NAME}.clap"
+rm -rf "${CLAP_DIR}"
+mkdir -p "${CLAP_DIR}"
+cp "${DLL_PATH}" "${CLAP_DIR}/${PLUGIN_NAME}.clap"
+echo "Windows CLAP bundle created at: ${CLAP_DIR}"
+
+echo "Done."

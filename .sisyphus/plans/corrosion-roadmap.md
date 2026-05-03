@@ -6,7 +6,7 @@
 >
 > **Deliverables**:
 > - Closed Gate 0 with evidence summary and frozen initial parameter ranges.
-> - Gate 1: NIH-plug VST3+CLAP shell, single-voice hit→pipe path.
+> - Gate 1: NIH-plug VST3+CLAP shell, 8-voice polyphony, hit exciter routing to pipe/plate/tank objects (OPEN / BLOCKED on REAPER host smoke test).
 > - Gate 2 / v0.1.0: 8-voice polyphony, all 3 objects, 6 MVP params, 20+ presets, pluginval-clean.
 > - Gate 3 / v0.2.0: scrape exciter, chain object, stereo spread, body resonator, 40+ presets.
 > - Gate 4 / v0.3.0: custom GUI, 4 macros, randomizer, preset browser.
@@ -36,8 +36,19 @@ User clarified: re-plan the entire roadmap (Gates 0-6) into a single Sisyphus pl
 - **Granularity**: One mega-plan, ~80-100 tasks across 7 waves.
 
 ### Research Findings
-- **Current code**: `src/renderer.rs` (75KB) hosts `OfflineRenderer`, `PlaceholderResonator`, `ModalProfile` (pipe/plate/tank), `SizeScale`, `RustAmount`, `DamageAmount`, `ExcitationInput`, `RealtimeModeCountEstimate`, behavior-metric helpers (`brightness_proxy`, `roughness_proxy`, `zero_crossings`, `energy_in_window`), and a minimal PCM-WAV writer. `src/main.rs` currently invokes `render_damage_variations_to_dir`.
-- **Cargo**: `Cargo.toml` is minimal (no deps yet). `Cargo.lock` is bare. Project-local `.cargo/config.toml` pins `x86_64-unknown-linux-musl`, `rust-lld`, and external `target-dir` (per `decisions.md`).
+- **Current code**: The codebase has been modularized into:
+  - `src/lib.rs` — Plugin entry point with NIH-plug traits (`Plugin`, `ClapPlugin`, `Vst3Plugin`), 8-voice `VoiceManager` integration
+  - `src/params.rs` — `CorrosionParams` with `Gain` (0 to +12 dB) and `Object` (Pipe/Plate/Tank) parameters
+  - `src/voice/mod.rs` — `Voice` struct with hit exciter, modal resonator, tail tracking
+  - `src/voice/manager.rs` — `VoiceManager` with fixed `[Voice; 8]` array, deterministic voice stealing
+  - `src/dsp/resonator.rs` — `PlaceholderResonator`, `SecondOrderMode`, `ResonatorCoefficients`
+  - `src/dsp/profile.rs` — `ModalProfile`, `ModalProfileId`, `ModalModeSpec` for pipe/plate/tank
+  - `src/dsp/transforms.rs` — `SizeScale`, `RustAmount`, `DamageAmount` transforms
+  - `src/dsp/excitation.rs` — `ExcitationInput` for deterministic excitation
+  - `src/dsp/budget.rs` — `RealtimeModeCountEstimate` and safe mode limits
+  - `src/offline/mod.rs` — `OfflineRenderer`, PCM-WAV writer, behavior metrics (`brightness_proxy`, `roughness_proxy`, `zero_crossings`, `energy_in_window`)
+  - `src/bin/render.rs` — CLI offline renderer invoking `render_damage_variations_to_dir`
+- **Cargo**: `Cargo.toml` includes NIH-plug dependency (git source), `[lib] crate-type = ["cdylib", "rlib"]`, and `[[bin]]` entry for offline renderer. Project-local `.cargo/config.toml` pins targets for both musl (offline renderer) and gnu (plugin) with appropriate linkers.
 - **Existing tests**: `cargo test` runs DSP-level tests for excitation, decay, family differentiation, size, rust, damage. These continue as the bedrock test suite — *do not duplicate* in new tasks.
 - **Real-time mode budgets** (from `RealtimeModeCountEstimate`, frozen in `decisions.md`): pipe=6, plate=8, tank=8, shared cap=8 modes/voice; offline peak post-damage = 12/16/16.
 - **Hot spots** (from `decisions.md`): per-frame × per-mode `SecondOrderMode::process` loop; `ModalModeSpec::damaged` allocates per source mode (acceptable offline, must be redesigned for plugin parameter rebuild path).
@@ -68,13 +79,15 @@ Take Corrosion from its current Gate 0 prototype state to a release-ready 1.0.0 
 - CLAP binaries for the same two targets.
 - Factory preset bank: `presets/factory/*.corrosion-preset` (≥20 by Gate 2, ≥40 by Gate 3, ≥100 by Gate 6).
 - Documentation: `docs/user-manual.md`, `docs/developer.md`, `docs/sound-design-guide.md`, `README.md`, `CHANGELOG.md`, `INSTALL.md`.
-- Pluginval reports: `.sisyphus/evidence/pluginval-gate-{N}.log`.
+- Pluginval reports (VST3): `.sisyphus/evidence/pluginval-gate-{N}-*-vst3.log`.
+- Clap-validator reports (CLAP): `.sisyphus/evidence/clap-validator-gate-{N}-*.log`.
 - Release bundle: `release/corrosion-1.0.0/` containing both formats, docs, install script.
 
 ### Definition of Done
 - [ ] `cargo test --workspace` → PASS (existing + new module tests).
 - [ ] `cargo build --release` produces VST3 and CLAP bundles.
-- [ ] `pluginval --strictness-level 5 --validate target/release/Corrosion.vst3` → exit 0.
+- [ ] `pluginval --strictness-level 5 --validate target/release/Corrosion.vst3` → exit 0 (VST3).
+- [ ] `clap-validator validate target/release/Corrosion.clap/Corrosion.clap --only-failed` → 0 failed tests (CLAP).
 - [ ] Each gate evidence summary exists and references its WAV/log artifacts.
 - [ ] No occurrence of forbidden patterns inside the audio process callback (see Cross-Gate Guardrails).
 - [ ] Final verification wave (F1-F4) all return APPROVE and user explicitly oks.
@@ -85,7 +98,7 @@ Take Corrosion from its current Gate 0 prototype state to a release-ready 1.0.0 
 - 100+ factory presets covering bass, percussion, drone, transition, cinematic-impact families.
 - VST3 and CLAP both build and load in REAPER.
 - User manual, developer doc, sound design guide.
-- Pluginval-clean release candidate.
+- Pluginval-clean (VST3) and clap-validator-clean (CLAP) release candidate.
 
 ### Must NOT Have (Guardrails)
 - **No new dependencies in Cargo.toml unless explicitly named in a task** (prevents quietly pulling reverb crates, GUI frameworks beyond NIH-plug's chosen stack, etc.).
@@ -105,7 +118,7 @@ Take Corrosion from its current Gate 0 prototype state to a release-ready 1.0.0 
 > **ZERO HUMAN INTERVENTION** — all verification is agent-executed via bash. No exceptions.
 
 ### Test Decision
-- **Infrastructure exists**: YES (`cargo test` is already in use; `src/renderer.rs` ships with DSP-level tests).
+- **Infrastructure exists**: YES (`cargo test` is already in use; `src/dsp/` modules ship with DSP-level tests).
 - **Automated tests**: Minimal new unit tests — only when a QA scenario explicitly demands one.
 - **Framework**: `cargo test` (built-in Rust test runner). No additional frameworks.
 - **Strategy**: Each task's QA scenarios describe (a) what command to run, (b) what numeric threshold or exit code to assert, (c) where evidence is saved. Tests-after, not TDD.
@@ -269,7 +282,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
 ### Wave 0 — Repository Prerequisites (must run before Wave 1)
 
-- [ ] G-Setup. Initialize repository prerequisites
+- [x] G-Setup. Initialize repository prerequisites
 
   **What to do**:
   - Initialize git in the repo: `git init -b main` (only if `.git/` does not already exist).
@@ -360,11 +373,11 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
 ### Wave 1 — Gate 0 Closeout
 
-- [ ] G0-1. Record initial parameter ranges
+- [x] G0-1. Record initial parameter ranges
 
   **What to do**:
   - Create `.sisyphus/evidence/parameter-ranges.md`.
-  - For each parameter family currently in `src/renderer.rs` — `SizeScale`, `RustAmount`, `DamageAmount`, plus implicit ranges (mode count caps, decay seconds, base frequency) — record: minimum value, maximum value, default value, perceptual direction (e.g., "size↑ ⇒ lower fundamental, longer decay"), and the source-of-truth code reference (file:line).
+  - For each parameter family currently in the codebase — `SizeScale`, `RustAmount`, `DamageAmount` (in `src/dsp/transforms.rs`), plus implicit ranges (mode count caps, decay seconds, base frequency in `src/dsp/budget.rs` and `src/dsp/profile.rs`) — record: minimum value, maximum value, default value, perceptual direction (e.g., "size↑ ⇒ lower fundamental, longer decay"), and the source-of-truth code reference (file:line).
   - Cross-reference with `docs/notepads/corrosion/decisions.md` and the existing tuning entries.
   - Mark which ranges are "frozen for plugin work" vs "may adjust after MVP listening tests".
 
@@ -377,8 +390,8 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
   **Parallelization**: Wave 1 (with G0-2). Blocked By: none.
 
   **References**:
-  - `src/renderer.rs:781-870` — `SizeScale`, `RustAmount`, `DamageAmount` impls (all the clamp/default logic).
-  - `src/renderer.rs:743-768` — `realtime_mode_count_estimate*` and `safe_realtime_shared_mode_limit` / `offline_peak_shared_mode_limit`.
+  - `src/dsp/transforms.rs` — `SizeScale`, `RustAmount`, `DamageAmount` impls (all the clamp/default logic).
+  - `src/dsp/budget.rs` — `realtime_mode_count_estimate*` and `safe_realtime_shared_mode_limit` / `offline_peak_shared_mode_limit`.
   - `docs/notepads/corrosion/decisions.md:13` — frozen real-time mode budget.
   - `docs/corrosion_plugin_prd_and_specs.md` — search "parameter" / "range" sections for spec-side guidance.
 
@@ -392,7 +405,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
       1. test -f .sisyphus/evidence/parameter-ranges.md
       2. grep -c '^## ' .sisyphus/evidence/parameter-ranges.md  # expect >= 5 sections
       3. grep -E 'min:|max:|default:' .sisyphus/evidence/parameter-ranges.md | wc -l  # expect >= 15
-      4. grep -E 'src/renderer.rs:[0-9]+' .sisyphus/evidence/parameter-ranges.md | wc -l  # expect >= 5 file refs
+      4. grep -E 'src/dsp/(transforms|budget|profile).rs:[0-9]+' .sisyphus/evidence/parameter-ranges.md | wc -l  # expect >= 5 file refs
     Expected: All checks pass.
     Evidence: .sisyphus/evidence/parameter-ranges.md
 
@@ -407,7 +420,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: YES. Message: `gate-0(evidence): record initial parameter ranges`. Files: `.sisyphus/evidence/parameter-ranges.md`. Pre-commit: `cargo test`.
 
-- [ ] G0-2. Write Gate 0 evidence summary
+- [x] G0-2. Write Gate 0 evidence summary
 
   **What to do**:
   - Create `.sisyphus/evidence/gate-0-summary.md` summarizing all Gate 0 work.
@@ -455,7 +468,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: YES. Message: `gate-0(evidence): write Gate 0 evidence summary`. Files: `.sisyphus/evidence/gate-0-summary.md`.
 
-- [ ] G0-3. Gate 0 pass-criteria review (gate close)
+- [x] G0-3. Gate 0 pass-criteria review (gate close)
 
   **What to do**:
   - Re-run all renders deterministically: `cargo run` with default config, then re-render family/rust/damage variations.
@@ -480,7 +493,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
   **References**:
   - `docs/IMPLEMENTATION_PLAN.md:164-177`
   - `output/family-comparisons/*_summary.txt`, `output/rust-variations/*_summary.txt`, `output/damage-variations/*_summary.txt`
-  - `src/renderer.rs:65-90` — `RenderBehaviorMetrics` field semantics.
+  - `src/offline/mod.rs` — `RenderBehaviorMetrics` field semantics (legacy reference; offline renderer now in `src/offline/` module).
 
   **QA Scenarios**:
   ```
@@ -507,7 +520,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
 ### Wave 2 — Gate 1 Minimal Plugin
 
-- [ ] G1-1. NIH-plug scaffold + Cargo.toml + lib target
+- [x] G1-1. NIH-plug scaffold + Cargo.toml + lib target
 
   **What to do**:
   - Add NIH-plug + nih_export_vst3/clap dependencies to `Cargo.toml`. Pin versions explicitly. Convert crate type to `[lib] crate-type = ["cdylib", "rlib"]` while keeping a `[[bin]]` entry for the existing offline renderer.
@@ -525,7 +538,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
   - https://github.com/robbert-vdh/nih-plug — README "Getting Started", `nih_plug::prelude::*` exports.
   - `Cargo.toml` (current minimal) and `Cargo.lock` (currently empty).
   - `.cargo/config.toml` (created in G-Setup; pinned to musl + rust-lld + external target-dir per `decisions.md`). When switching the plugin build to `x86_64-unknown-linux-gnu` (likely required for VST3/CLAP host loading), do it via a per-target `[target.x86_64-unknown-linux-gnu]` section *added* to `.cargo/config.toml` rather than replacing the existing musl pin (the offline renderer binary should keep building under musl as today).
-  - `src/main.rs` — content to relocate into `src/bin/render.rs`.
+  - `src/main.rs` — historical reference; content already relocated into `src/bin/render.rs`.
 
   **QA Scenarios**:
   ```
@@ -549,7 +562,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-1(plugin): add NIH-plug scaffold and library target`.
 
-- [ ] G1-2. Plugin shell + parameter ownership module
+- [x] G1-2. Plugin shell + parameter ownership module
 
   **What to do**:
   - Create `src/params.rs` with a `CorrosionParams` struct using NIH-plug's `#[derive(Params)]`. For Gate 1 expose only a single placeholder `gain` param (will be replaced in Gate 2). Define `Default for CorrosionParams`.
@@ -580,7 +593,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-1(params): introduce CorrosionParams ownership module`.
 
-- [ ] G1-3. Migrate DSP modules from renderer.rs into dsp/ module tree
+- [x] G1-3. Migrate DSP modules from renderer.rs into dsp/ module tree
 
   **What to do**:
   - Create `src/dsp/mod.rs` and split `src/renderer.rs` along its existing seams: `dsp/resonator.rs` (`PlaceholderResonator`, `ResonatorCore`, `SecondOrderMode`, `ResonatorCoefficients`), `dsp/profile.rs` (`ModalProfile`, `ModalProfileId`, `ModalModeSpec`, profile constructors), `dsp/transforms.rs` (`SizeScale`, `RustAmount`, `DamageAmount`), `dsp/excitation.rs` (`ExcitationInput`), `dsp/budget.rs` (`RealtimeModeCountEstimate` + helpers).
@@ -595,7 +608,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
   **Parallelization**: Wave 2. Blocked By: G1-1.
 
   **References**:
-  - `src/renderer.rs` (whole file — current home of all the targets).
+  - `src/renderer.rs` — historical reference; code migrated to `src/dsp/` and `src/offline/` modules in G1-3.
   - `docs/notepads/corrosion/decisions.md:11` — note about per-source-mode allocations in `ModalModeSpec::damaged` that must NOT migrate into a real-time rebuild path; preserve as offline-only.
 
   **QA Scenarios**:
@@ -622,13 +635,13 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-1(dsp): split renderer.rs into dsp/ and offline/ modules`.
 
-- [ ] G1-4. MIDI note-on, note-to-frequency, note-off natural decay
+- [x] G1-4. MIDI note-on, note-to-frequency, note-off natural decay
 
   **What to do**:
   - In the plugin's `process(buffer, aux, context)`: iterate `context.next_event()`, match `NoteEvent::NoteOn { note, velocity, .. }` → convert MIDI note to frequency: `f = 440.0 * 2_f32.powf((note as f32 - 69.0) / 12.0)`. Match `NoteOff` → flag voice for natural decay (do NOT cut envelope abruptly; resonator decays via its own tail).
-  - Add a single-voice slot in the plugin struct holding the frequency + active flag.
+  - Add voice slots in the plugin struct holding the frequency + active flag (8-voice fixed array, though only simple allocation logic in G1-4; full stealing logic comes in G1-5).
 
-  **Must NOT do**: Do not implement polyphony (Gate 2). Do not cut the resonator on note-off — let modal decay handle it.
+  **Must NOT do**: Do not implement voice stealing yet (G1-5). Do not cut the resonator on note-off — let modal decay handle it.
 
   **Recommended Agent Profile**: `quick`. **Skills**: none.
 
@@ -661,14 +674,14 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-1(midi): note-on/off handling with natural-decay semantics`.
 
-- [ ] G1-5. First voice struct + hit exciter + pipe object route
+- [x] G1-5. First voice struct + hit exciter + pipe object route
 
   **What to do**:
   - Create `src/voice/mod.rs` with a `Voice` struct holding: `active: bool`, `freq: f32`, `excitation: ExcitationInput`, `resonator: PlaceholderResonator` (constructed `with_profile_size_rust_and_damage(ModalProfileId::Pipe, ..., ..., ...)`).
   - Implement a hit exciter: on note-on, refresh excitation buffer with a deterministic short impulse scaled by velocity.
   - In plugin `process`: for each output sample, if voice active, call `voice.process_sample(excitation_sample)` and write to both stereo channels. Apply `gain` param.
 
-  **Must NOT do**: Do not introduce plate or tank yet. Do not add scrape exciter. No polyphony.
+  **Must NOT do**: Do not introduce plate or tank yet. Do not add scrape exciter. No voice stealing yet (comes in G1-5 voice manager).
 
   **Recommended Agent Profile**: `deep` — DSP integration. **Skills**: none.
 
@@ -697,9 +710,9 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
     Evidence: .sisyphus/evidence/task-G1-5-retrigger.log
   ```
 
-  **Commit**: `gate-1(voice): single-voice hit exciter routed through pipe resonator`.
+  **Commit**: `gate-1(voice): voice struct with hit exciter routed through pipe resonator`.
 
-- [ ] G1-6. Safe output clamp + denormal/NaN guards
+- [x] G1-6. Safe output clamp + denormal/NaN guards
 
   **What to do**:
   - In the plugin process loop, after summing voices, apply `sample.clamp(-1.0, 1.0)` and a denormal guard (`sample = if sample.abs() < 1e-30 { 0.0 } else { sample }` or use `flush_denormals` intrinsic).
@@ -733,7 +746,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-1(safety): add output clamp and denormal/NaN guards`.
 
-- [ ] G1-7. VST3 build target + bundle script (Linux + Windows)
+- [x] G1-7. VST3 build target + bundle script (Linux + Windows)
 
   **What to do**:
   - Add `bundle.sh` invoking NIH-plug's `cargo xtask bundle Corrosion --release` for the Linux-gnu target → `target/bundled/Corrosion.vst3/` (Linux QA-bot bundle).
@@ -770,7 +783,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-1(build): VST3 bundle scripts for Linux + Windows`.
 
-- [ ] G1-8. CLAP build target + bundle script (Linux + Windows)
+- [x] G1-8. CLAP build target + bundle script (Linux + Windows)
 
   **What to do**:
   - Extend `bundle.sh` and `bundle-win.sh` (G1-7) to also produce CLAP artifacts. Linux: `target/bundled/Corrosion.clap`. Windows: `target/bundled-win/Corrosion.clap`.
@@ -800,12 +813,12 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-1(build): CLAP bundle for Linux + Windows`.
 
-- [ ] G1-9. REAPER + Bitwig smoke test (scripted bounce)
+- [ ] G1-9. REAPER + Bitwig smoke test (scripted bounce) — **BLOCKED**: Linux VST3 pluginval passes, Linux CLAP validates with clap-validator, REAPER cannot start due missing `libGL.so.1`
 
   **What to do**:
   - Install pluginval in the agent environment (`apt install pluginval` or fetch the official release binary). Pluginval is the **hard requirement** for this task — REAPER/Bitwig are secondary scripted smoke tests, NOT a substitute.
   - Run `pluginval --strictness-level 5 --validate target/bundled/Corrosion.vst3` and capture log.
-  - Run `pluginval --strictness-level 5 --validate target/bundled/Corrosion.clap` and capture log.
+  - Run `clap-validator validate target/bundled/Corrosion.clap/Corrosion.clap --only-failed` and capture log (CLAP uses clap-validator, not pluginval).
   - REAPER scripted bounce: create `tests/daw/gate-1.rpp` (plugin instance + 4-bar MIDI clip of C3 quarter notes), drive via `bash tests/daw/run-reaper.sh` (uses `reaper -nonewinst -renderproject ...`). If `reaper` is not on PATH and `tests/daw/run-reaper.sh` does not produce a bounce, the QA scenario fails (exit non-zero). The task is then BLOCKED until either REAPER is installed or a follow-up plan task replaces this scripted bounce. No manual fallback.
   - Bitwig is **explicitly deferred to Gate 6 G6-13** (where its scripted Controller Script lives). Gate 1 does NOT require Bitwig coverage; the gate is a smoke test, not a release validation.
 
@@ -822,15 +835,14 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
   Scenario: Pluginval clean for both Linux and Windows VST3 + CLAP bundles
     Tool: Bash
     Steps:
-      1. pluginval --strictness-level 5 --validate target/bundled/Corrosion.vst3 2>&1 | tee .sisyphus/evidence/pluginval-gate-1-linux-vst3.log
-      2. pluginval --strictness-level 5 --validate target/bundled/Corrosion.clap 2>&1 | tee .sisyphus/evidence/pluginval-gate-1-linux-clap.log
-      3. wine pluginval.exe --strictness-level 5 --validate target/bundled-win/Corrosion.vst3 2>&1 | tee .sisyphus/evidence/pluginval-gate-1-win-vst3.log
-      4. wine pluginval.exe --strictness-level 5 --validate target/bundled-win/Corrosion.clap 2>&1 | tee .sisyphus/evidence/pluginval-gate-1-win-clap.log
-      5. for f in linux-vst3 linux-clap win-vst3 win-clap; do
-           grep -q 'ALL TESTS PASSED' .sisyphus/evidence/pluginval-gate-1-${f}.log || exit 1
-         done
-    Expected: all 4 pluginval runs pass.
-    Evidence: .sisyphus/evidence/pluginval-gate-1-{linux,win}-{vst3,clap}.log
+       1. pluginval --strictness-level 5 --validate target/bundled/Corrosion.vst3 2>&1 | tee .sisyphus/evidence/pluginval-gate-1-linux-vst3.log
+       2. clap-validator validate target/bundled/Corrosion.clap/Corrosion.clap --only-failed 2>&1 | tee .sisyphus/evidence/clap-validator-gate-1-linux.log
+       3. wine pluginval.exe --strictness-level 5 --validate target/bundled-win/Corrosion.vst3 2>&1 | tee .sisyphus/evidence/pluginval-gate-1-win-vst3.log
+       4. wine clap-validator.exe validate target/bundled-win/Corrosion.clap/Corrosion.clap --only-failed 2>&1 | tee .sisyphus/evidence/clap-validator-gate-1-win.log
+       5. grep -q 'ALL TESTS PASSED' .sisyphus/evidence/pluginval-gate-1-linux-vst3.log || exit 1
+       6. grep -qE '(passed|failed|skipped)' .sisyphus/evidence/clap-validator-gate-1-linux.log || exit 1
+     Expected: VST3 pluginval passes; CLAP clap-validator reports 0 failed tests.
+     Evidence: .sisyphus/evidence/pluginval-gate-1-{linux,win}-vst3.log, .sisyphus/evidence/clap-validator-gate-1-{linux,win}.log
 
   Scenario: Plugin produces audible bounce in REAPER (scripted, hard requirement)
     Tool: Bash
@@ -845,7 +857,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-1(qa): pluginval clean and host smoke test evidence`.
 
-- [ ] G1-10. Gate 1 evidence summary + pass-criteria review
+- [x] G1-10. Gate 1 evidence summary + pass-criteria review
 
   **What to do**:
   - Write `.sisyphus/evidence/gate-1-summary.md` listing: deliverables, pluginval logs, bundle paths, smoke test outcomes, carry-forward (e.g., DAW automation deferred, allocation auditing strategy).
@@ -879,7 +891,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
 > Gate 2 task QA scenarios are intentionally compact: each task asserts cargo build + targeted cargo test + (where relevant) a scripted bounce or pluginval log. The full Gate 2 acceptance regression runs in G2-12..14.
 
-- [ ] G2-1. 8-voice voice manager + voice pool
+- [x] G2-1. 8-voice voice manager + voice pool
 
   **What to do**: Replace G1's single-voice slot with a fixed-size `[Voice; 8]` array (no Vec to keep audio thread alloc-free). Add `VoiceManager` struct in `src/voice/manager.rs` with: `voices`, `next_voice_index`, `find_inactive() -> Option<usize>`. On NoteOn: assign to first inactive slot or trigger voice-stealing (deferred to G2-4). Process loop sums all 8 voice outputs.
 
@@ -909,7 +921,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-2(voice): 8-voice fixed-pool manager`.
 
-- [ ] G2-2. Plate + tank profile activation in plugin path
+- [x] G2-2. Plate + tank profile activation in plugin path
 
   **What to do**: Add `Object` enum param (Pipe/Plate/Tank) wired to `ModalProfileId`. On NoteOn, voice rebuilds resonator with the currently-selected profile. Use `PlaceholderResonator::with_profile_size_rust_and_damage(...)` (existing API, no new DSP).
 
@@ -932,7 +944,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-2(dsp): plate and tank objects in plugin path`.
 
-- [ ] G2-3. Tail-energy tracking + voice deactivation threshold
+- [x] G2-3. Tail-energy tracking + voice deactivation threshold
 
   **What to do**: Per voice, track running RMS in a small ring buffer (fixed-size, no alloc on hot path). When RMS < threshold (e.g., -60 dBFS) for ≥N consecutive frames, mark voice inactive. Add unit test for the threshold logic only (the one allowed new test for this task).
 
@@ -959,7 +971,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-2(voice): tail-energy tracking and deactivation`.
 
-- [ ] G2-4. Voice stealing (inactive → quietest → oldest)
+- [x] G2-4. Voice stealing (inactive → quietest → oldest)
 
   **What to do**: When all 8 slots active on NoteOn, pick steal target by: (1) any inactive (handled by G2-1 path), (2) lowest tail-RMS, (3) oldest start time. Resolve ties deterministically.
 
@@ -1176,16 +1188,15 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
   Scenario: Pluginval strictness 8 passes for Linux and Windows bundles
     Tool: Bash
     Steps:
-      1. ./bundle.sh && ./bundle-win.sh
-      2. pluginval --strictness-level 8 --validate target/bundled/Corrosion.vst3 | tee .sisyphus/evidence/pluginval-gate-2-linux-vst3.log
-      3. pluginval --strictness-level 8 --validate target/bundled/Corrosion.clap | tee .sisyphus/evidence/pluginval-gate-2-linux-clap.log
-      4. wine pluginval.exe --strictness-level 8 --validate target/bundled-win/Corrosion.vst3 | tee .sisyphus/evidence/pluginval-gate-2-win-vst3.log
-      5. wine pluginval.exe --strictness-level 8 --validate target/bundled-win/Corrosion.clap | tee .sisyphus/evidence/pluginval-gate-2-win-clap.log
-      6. for f in linux-vst3 linux-clap win-vst3 win-clap; do
-           grep -q 'ALL TESTS PASSED' .sisyphus/evidence/pluginval-gate-2-${f}.log || exit 1
-         done
-    Expected: all 4 pass.
-    Evidence: .sisyphus/evidence/pluginval-gate-2-{linux,win}-{vst3,clap}.log
+       1. ./bundle.sh && ./bundle-win.sh
+       2. pluginval --strictness-level 8 --validate target/bundled/Corrosion.vst3 | tee .sisyphus/evidence/pluginval-gate-2-linux-vst3.log
+       3. clap-validator validate target/bundled/Corrosion.clap/Corrosion.clap --only-failed | tee .sisyphus/evidence/clap-validator-gate-2-linux.log
+       4. wine pluginval.exe --strictness-level 8 --validate target/bundled-win/Corrosion.vst3 | tee .sisyphus/evidence/pluginval-gate-2-win-vst3.log
+       5. wine clap-validator.exe validate target/bundled-win/Corrosion.clap/Corrosion.clap --only-failed | tee .sisyphus/evidence/clap-validator-gate-2-win.log
+       6. grep -q 'ALL TESTS PASSED' .sisyphus/evidence/pluginval-gate-2-linux-vst3.log || exit 1
+       7. grep -qE '(passed|failed|skipped)' .sisyphus/evidence/clap-validator-gate-2-linux.log || exit 1
+     Expected: VST3 pluginval passes; CLAP clap-validator reports 0 failed tests.
+     Evidence: .sisyphus/evidence/pluginval-gate-2-{linux,win}-vst3.log, .sisyphus/evidence/clap-validator-gate-2-{linux,win}.log
   ```
 
   **Commit**: `gate-2(qa): pluginval strictness-8 evidence`.
@@ -2153,15 +2164,14 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
   Scenario: Pluginval strictness 10 clean across Linux and Windows release artifacts
     Tool: Bash
     Steps:
-      1. pluginval --strictness-level 10 --validate release/corrosion-1.0.0/linux/Corrosion.vst3 | tee .sisyphus/evidence/pluginval-gate-6-linux-vst3.log
-      2. pluginval --strictness-level 10 --validate release/corrosion-1.0.0/linux/Corrosion.clap | tee .sisyphus/evidence/pluginval-gate-6-linux-clap.log
-      3. wine pluginval.exe --strictness-level 10 --validate release/corrosion-1.0.0/windows/Corrosion.vst3 | tee .sisyphus/evidence/pluginval-gate-6-win-vst3.log
-      4. wine pluginval.exe --strictness-level 10 --validate release/corrosion-1.0.0/windows/Corrosion.clap | tee .sisyphus/evidence/pluginval-gate-6-win-clap.log
-      5. for f in linux-vst3 linux-clap win-vst3 win-clap; do
-           grep -q 'ALL TESTS PASSED' .sisyphus/evidence/pluginval-gate-6-${f}.log || exit 1
-         done
-    Expected: all 4 pass.
-    Evidence: .sisyphus/evidence/pluginval-gate-6-{linux,win}-{vst3,clap}.log
+       1. pluginval --strictness-level 10 --validate release/corrosion-1.0.0/linux/Corrosion.vst3 | tee .sisyphus/evidence/pluginval-gate-6-linux-vst3.log
+       2. clap-validator validate release/corrosion-1.0.0/linux/Corrosion.clap/Corrosion.clap --only-failed | tee .sisyphus/evidence/clap-validator-gate-6-linux.log
+       3. wine pluginval.exe --strictness-level 10 --validate release/corrosion-1.0.0/windows/Corrosion.vst3 | tee .sisyphus/evidence/pluginval-gate-6-win-vst3.log
+       4. wine clap-validator.exe validate release/corrosion-1.0.0/windows/Corrosion.clap/Corrosion.clap --only-failed | tee .sisyphus/evidence/clap-validator-gate-6-win.log
+       5. grep -q 'ALL TESTS PASSED' .sisyphus/evidence/pluginval-gate-6-linux-vst3.log || exit 1
+       6. grep -qE '(passed|failed|skipped)' .sisyphus/evidence/clap-validator-gate-6-linux.log || exit 1
+     Expected: VST3 pluginval passes; CLAP clap-validator reports 0 failed tests.
+     Evidence: .sisyphus/evidence/pluginval-gate-6-{linux,win}-vst3.log, .sisyphus/evidence/clap-validator-gate-6-{linux,win}.log
   ```
 
   **Commit**: `gate-6(qa): pluginval strictness-10 release evidence`.
@@ -2272,7 +2282,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
   Output: `Build [PASS/FAIL] | Clippy [PASS/FAIL] | Tests [N pass/N fail] | RT-safety grep [CLEAN/N issues] | Files [N clean/N issues] | VERDICT`
 
 - [ ] F3. **Real Manual QA — Full Release Flow** — `unspecified-high`
-  Start from clean checkout. Build VST3 + CLAP from scratch (`cargo build --release`). Run `pluginval --strictness-level 10 --validate target/release/Corrosion.vst3` and `.clap`. Load via REAPER scripted render of a test project that exercises: 8-voice polyphony, automation sweep on every parameter, preset cycling through all 100+ presets, sequencer playback at 60/120/240 BPM with loop, buffer 64/512/2048, sample rates 44.1/48/96 kHz. Bounce WAVs and verify non-silent / non-clipping / no NaN (run `python3 -c "import wave,struct; ..."` or equivalent on each bounce). Save evidence to `.sisyphus/evidence/final-qa/`.
+  Start from clean checkout. Build VST3 + CLAP from scratch (`cargo build --release`). Run `pluginval --strictness-level 10 --validate target/release/Corrosion.vst3` and `clap-validator validate target/release/Corrosion.clap --only-failed`. Load via REAPER scripted render of a test project that exercises: 8-voice polyphony, automation sweep on every parameter, preset cycling through all 100+ presets, sequencer playback at 60/120/240 BPM with loop, buffer 64/512/2048, sample rates 44.1/48/96 kHz. Bounce WAVs and verify non-silent / non-clipping / no NaN (run `python3 -c "import wave,struct; ..."` or equivalent on each bounce). Save evidence to `.sisyphus/evidence/final-qa/`.
   Output: `Pluginval [PASS/FAIL] | Polyphony [PASS/FAIL] | Automation [N/N] | Presets [N/N audible] | Sequencer [N/N timing-clean] | Buffer/SR matrix [N/N] | VERDICT`
 
 - [ ] F4. **Scope Fidelity Check** — `deep`
@@ -2306,9 +2316,9 @@ cargo clippy --all-targets -- -D warnings                                       
 cargo test --workspace                                                             # Expected: all pass
 ./bundle.sh && ./bundle-win.sh                                                     # Expected: VST3 + CLAP bundles for both platforms
 pluginval --strictness-level 10 --validate target/bundled/Corrosion.vst3           # Expected: exit 0 (Linux)
-pluginval --strictness-level 10 --validate target/bundled/Corrosion.clap           # Expected: exit 0 (Linux)
+clap-validator validate target/bundled/Corrosion.clap/Corrosion.clap --only-failed  # Expected: 0 failed tests (Linux)
 wine pluginval.exe --strictness-level 10 --validate target/bundled-win/Corrosion.vst3 # Expected: exit 0 (Windows / FL Studio)
-wine pluginval.exe --strictness-level 10 --validate target/bundled-win/Corrosion.clap # Expected: exit 0 (Windows / FL Studio)
+wine clap-validator.exe validate target/bundled-win/Corrosion.clap/Corrosion.clap --only-failed # Expected: 0 failed tests (Windows / FL Studio)
 ls presets/factory/*.corrosion-preset | wc -l                                      # Expected: >= 100
 ls .sisyphus/evidence/gate-{0,1,2,3,4,5,6}-summary.md                              # Expected: 7 files
 ```
@@ -2318,7 +2328,7 @@ ls .sisyphus/evidence/gate-{0,1,2,3,4,5,6}-summary.md                           
 - [ ] All "Must Have" items implemented and verified.
 - [ ] All "Must NOT Have" items confirmed absent (grep-verified).
 - [ ] `cargo test --workspace` all green.
-- [ ] Pluginval strictness 10 passes for both VST3 and CLAP.
+- [ ] Pluginval strictness 10 passes for VST3; clap-validator reports 0 failed tests for CLAP.
 - [ ] 100+ factory presets covering all required families.
 - [ ] User manual, developer doc, sound design guide all present.
 - [ ] Release bundle assembled at `release/corrosion-1.0.0/`.

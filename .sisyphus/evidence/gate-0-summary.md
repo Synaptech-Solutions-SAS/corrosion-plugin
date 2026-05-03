@@ -8,7 +8,7 @@
 
 ## 1. Deliverables
 
-- Offline DSP renderer in Rust: DONE (`src/renderer.rs`, `src/main.rs`)
+- Offline DSP renderer in Rust: DONE (`src/offline/mod.rs`, `src/bin/render.rs`)
 - Second-order modal resonator prototype: DONE
 - Deterministic excitation input: DONE (`ExcitationInput::deterministic_excitation()`)
 - Pipe modal profile: DONE
@@ -58,7 +58,7 @@
 
 - **Real-time mode budget**: pipe=6, plate=8, tank=8, shared cap=8.
 - **Allocation concern**: `ModalModeSpec::damaged` allocates per source mode — must NOT migrate to real-time rebuild path.
-- **CPU hot path**: per-frame × per-mode `SecondOrderMode::process` loop in `src/renderer.rs`.
+- **CPU hot path**: per-frame × per-mode `SecondOrderMode::process` loop in `src/dsp/resonator.rs`.
 
 ---
 

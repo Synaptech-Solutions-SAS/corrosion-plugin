@@ -69,7 +69,7 @@ Plate vs Tank:  |0.136372 - 1.460285| / max(0.136372, 1.460285) = 1.3239 / 1.460
 The `tank_comparison_summary.txt` reports a float-domain peak of **3.9568**.
 This exceeds the [-1.0, 1.0] range of normalized audio.
 
-**WAV writer analysis** (`src/renderer.rs`, line 328-335):
+**WAV writer analysis** (`src/offline/mod.rs` — `float_sample_to_pcm_i16`):
 ```rust
 fn float_sample_to_pcm_i16(sample: f32) -> i16 {
     let clamped = sample.clamp(-1.0, 1.0);   // ← hard clamp before conversion

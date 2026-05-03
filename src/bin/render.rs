@@ -1,9 +1,5 @@
-#[path = "../renderer.rs"]
-mod renderer;
-
+use corrotion::offline::{OfflineRenderer, RenderConfig};
 use std::path::Path;
-
-use renderer::{OfflineRenderer, RenderConfig};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = RenderConfig::default();

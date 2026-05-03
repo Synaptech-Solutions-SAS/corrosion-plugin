@@ -11,3 +11,4 @@ name = "render"
 path = "src/bin/render.rs"
 
 [dependencies]
+nih-plug = { package = "nih_plug", git = "https://github.com/robbert-vdh/nih-plug", features = ["assert_process_allocs"] }
