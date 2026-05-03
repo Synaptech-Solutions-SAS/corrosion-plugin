@@ -118,4 +118,10 @@ Target directory redirected to `../corrotion-target` to avoid polluting repo.
 
 - NIH-plug `Plugin` in this repo version does not expose `get_state` / `load_state`; preset snapshotting has to live as inherent helpers on `Corrosion` and/or in the `Params` snapshot path.
 - The preset format works cleanly when the plugin params are rebuilt from a `Preset` and the `Arc<CorrosionParams>` is swapped on load.
+
+## 2026-05-03 - G2-11 Hard Limiter Verification Notes
+
+- Added a final-stage hard clamp in `src/lib.rs` after output gain so the plugin output cannot exceed `±0.9661`.
+- Exposed a tiny `apply_output_limiter()` helper so the clamp math can be regression-tested directly in `tests/limiter.rs`.
+- Native verification passed on `x86_64-unknown-linux-gnu`; the repo default musl target still needs a pkg-config sysroot for `x11` in this environment.
 - `preset-render` should resolve the fixture path from the repo root (`tests/fixtures/default.corrosion-preset`), not from `.sisyphus/`.
