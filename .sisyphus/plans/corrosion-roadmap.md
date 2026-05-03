@@ -1190,7 +1190,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-2(safety): hard-knee output limiter`.
 
-- [ ] G2-12. Pluginval Gate 2 run + log capture
+- [x] G2-12. Pluginval Gate 2 run + log capture
 
   **What to do**: Build release bundle, run `pluginval --strictness-level 8` against VST3 and CLAP. Capture full logs. If any test fails, do NOT close gate.
 
