@@ -1,7 +1,14 @@
 use nih_plug::prelude::*;
+#[cfg(feature = "gui")]
+use nih_plug_egui::EguiState;
+#[cfg(feature = "gui")]
+use std::sync::Arc;
 
 #[derive(Params)]
 pub struct CorrosionParams {
+    #[cfg(feature = "gui")]
+    #[persist = "editor-state"]
+    pub editor_state: Arc<EguiState>,
     #[id = "object"]
     pub object: IntParam,
     #[id = "size"]
@@ -44,6 +51,8 @@ impl Object {
 impl Default for CorrosionParams {
     fn default() -> Self {
         Self {
+            #[cfg(feature = "gui")]
+            editor_state: EguiState::from_size(400, 300),
             object: IntParam::new("Object", 0, IntRange::Linear { min: 0, max: 2 }),
             size: FloatParam::new(
                 "Size",

@@ -7,6 +7,8 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use nih_plug::prelude::*;
+#[cfg(feature = "gui")]
+use nih_plug_egui::{create_egui_editor, egui, widgets};
 use voice::VoiceManager;
 
 pub use params::{CorrosionParams, Object};
@@ -114,6 +116,56 @@ impl Plugin for Corrosion {
         }
 
         ProcessStatus::Normal
+    }
+
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        #[cfg(feature = "gui")]
+        {
+            let params = self.params.clone();
+            create_egui_editor(
+                self.params.editor_state.clone(),
+                (),
+                |_, _| {},
+                move |egui_ctx, setter, _state| {
+                    egui::CentralPanel::default().show(egui_ctx, |ui| {
+                        ui.heading("Corrosion");
+                        ui.separator();
+
+                        ui.label("Object");
+                        ui.add(widgets::ParamSlider::for_param(&params.object, setter));
+
+                        ui.add_space(8.0);
+
+                        ui.label("Size");
+                        ui.add(widgets::ParamSlider::for_param(&params.size, setter));
+
+                        ui.add_space(8.0);
+
+                        ui.label("Rust");
+                        ui.add(widgets::ParamSlider::for_param(&params.rust, setter));
+
+                        ui.add_space(8.0);
+
+                        ui.label("Damage");
+                        ui.add(widgets::ParamSlider::for_param(&params.damage, setter));
+
+                        ui.add_space(8.0);
+
+                        ui.label("Drive");
+                        ui.add(widgets::ParamSlider::for_param(&params.drive, setter));
+
+                        ui.add_space(8.0);
+
+                        ui.label("Output");
+                        ui.add(widgets::ParamSlider::for_param(&params.output, setter));
+                    });
+                },
+            )
+        }
+        #[cfg(not(feature = "gui"))]
+        {
+            None
+        }
     }
 }
 

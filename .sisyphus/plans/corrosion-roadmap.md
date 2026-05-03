@@ -1087,7 +1087,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-2(safety): allocation audit and denormal/NaN guards`.
 
-- [ ] G2-8. Generic editor (NIH-plug egui or default)
+- [x] G2-8. Generic editor (NIH-plug egui or default)
 
   **What to do**: Add NIH-plug's `nih_plug_egui` or `nih_plug_iced` (whichever the chosen GUI stack will be in Gate 4 — pick now to avoid migration). For Gate 2: a generic-knob layout, one slider/knob per param. No physical metaphor yet.
 
