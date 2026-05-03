@@ -15,6 +15,13 @@ use voice::VoiceManager;
 pub use params::{CorrosionParams, Object};
 pub use presets::Preset;
 
+pub const LIMITER_THRESHOLD: f32 = 0.9661;
+
+#[inline]
+pub fn apply_output_limiter(sample: f32) -> f32 {
+    sample.clamp(-LIMITER_THRESHOLD, LIMITER_THRESHOLD)
+}
+
 pub fn corrosion_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
@@ -119,7 +126,7 @@ impl Plugin for Corrosion {
             let mut sample = self.voice_manager.process_sample(sample_rate);
             sample = (sample * (1.0 + drive * 3.0)).tanh();
             sample *= output_gain;
-            sample = sample.clamp(-1.0, 1.0);
+            sample = apply_output_limiter(sample);
             let mut idx = 0;
             for channel_sample in channel_samples.into_iter() {
                 if idx < 2 {
