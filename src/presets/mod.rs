@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::params::{CorrosionParams, Object};
+use crate::params::{object_param, CorrosionParams, Object};
 
 pub const PRESET_VERSION: &str = "1";
 
@@ -36,11 +36,7 @@ impl Preset {
 
     pub fn into_params(self) -> CorrosionParams {
         let mut params = CorrosionParams::default();
-        params.object = nih_plug::prelude::IntParam::new(
-            "Object",
-            self.object.to_int(),
-            nih_plug::prelude::IntRange::Linear { min: 0, max: 2 },
-        );
+        params.object = object_param(self.object.to_int());
         params.size = nih_plug::prelude::FloatParam::new(
             "Size",
             self.size,

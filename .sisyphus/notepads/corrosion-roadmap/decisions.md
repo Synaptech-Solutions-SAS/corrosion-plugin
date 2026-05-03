@@ -13,3 +13,16 @@
 
 - Use a dedicated `.sisyphus/evidence/gate-2-summary.md` closure file as the canonical pass-criteria record for Gate 2.
 - Keep the gate closure tag (`gate-2-complete`) aligned with the evidence summary so future audits can jump from the tag to the closure artifact immediately.
+
+## 2026-05-03 - Post-Gate-2 Triage Order
+
+- Fix functional playback bugs before any DSP retuning; the current first priority is correct multi-note event consumption in the plugin process loop.
+- Use human-readable object names everywhere the host/UI renders the object parameter, with the formatter defined once and reused by preset reconstruction.
+- Defer physical-model retuning until the exciter expansion starts, then evaluate resonator changes against user-provided sonic references instead of tuning against the current presets alone.
+
+## 2026-05-03 - Detailed Spec Authority Decision
+
+- `docs/new-detailed-specs/` is the authoritative algorithm-definition layer for future exciter, resonator, transformation, interaction, and post-processing work.
+- If the roadmap and the detailed specs disagree about timing/scope, the roadmap wins; if they disagree about mathematical behavior or named model identity, the detailed specs win.
+- From Gate 3 onward, every DSP-facing task must cite the exact spec file(s) it implements and must preserve the named algorithm family unless a staged approximation is documented explicitly in evidence.
+- `docs/full-feature-surface.md` and `docs/sound-direction-brief.md` are now treated as the bridge between roadmap sequencing and detailed-spec implementation, and must stay aligned with both.

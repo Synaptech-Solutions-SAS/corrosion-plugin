@@ -55,6 +55,13 @@ User clarified: re-plan the entire roadmap (Gates 0-6) into a single Sisyphus pl
 - **Environment caveat** (from `issues.md`): `rust-analyzer` unavailable in container — verification depends on `cargo fmt` / `cargo test` / `cargo run` rather than LSP diagnostics. Plan must not require LSP-only tooling.
 - **Gate 0 status**: 14/17 implementation items done; remaining = (a) record initial parameter ranges, (b) write Gate 0 evidence summary, (c) Gate 0 review.
 - **PRD scope guardrails**: explicitly excludes Corrosion FX, Corrosion Lab, expansion packs, neural synthesis, sample browser, modular environment.
+- **Detailed DSP spec pack**: `docs/new-detailed-specs/` is now the authoritative algorithm-detail layer for future DSP, interaction, and post-processing work:
+  - `signal-chain.md` — macro signal path, control/audio-rate boundaries, modulation bus, block ordering, and output-stage placement.
+  - `exciter-algorithms.md` — exciter categories, named models, mathematical states, and exposed tweakable parameters.
+  - `resonator-algorithms.md` — object/resonator families, modal distributions, exposed structural parameters, and object-expansion targets.
+  - `transformation-algorithms.md` — Size/Rust/Damage math plus `Thickness`, `Heat`, `Sludge`, and velocity-macro behavior.
+  - `exciter-resonator-interaction.md` — mandatory interaction-bus semantics, bidirectional coupling, strike-position math, dynamic position modulation, and MSEG control architecture.
+  - `post-processing.md` — filter/drive/body/stereo/space/output architecture and the high-fidelity model targets for each stage.
 
 ### Self-Review Substituting Metis
 Gaps proactively identified and addressed in this plan:
@@ -67,6 +74,51 @@ Gaps proactively identified and addressed in this plan:
 ---
 
 ## Work Objectives
+
+### Detailed Spec Authority (MANDATORY)
+
+The roadmap now has two layers of authority that must be used together:
+
+1. **Roadmap authority** (`.sisyphus/plans/corrosion-roadmap.md`)
+   - controls sequencing, scope, gating, QA, release criteria, and what is allowed at each gate.
+
+2. **Detailed DSP authority** (`docs/new-detailed-specs/*.md`)
+   - controls algorithm intent, named model families, signal-chain ordering, interaction semantics, control vocabulary, and mathematical state expectations.
+
+#### Conflict-resolution rule
+- If the roadmap and detailed specs disagree about **when** something should be built, the roadmap wins.
+- If they disagree about **how** a named DSP block should behave, the detailed specs win.
+
+#### Mandatory reference rule
+Every future task touching:
+- exciters,
+- resonators/objects,
+- transforms,
+- interaction/coupling,
+- envelopes/modulation,
+- post-processing,
+- sequencing/step locks,
+- GUI metaphor/control naming,
+
+must read and cite the relevant file(s) in `docs/new-detailed-specs/` before implementation.
+
+#### Algorithm preservation rule
+- Do not silently replace a named detailed-spec algorithm family with a simpler ad-hoc substitute and still call the task complete.
+- If a gate ships a staged approximation for CPU, complexity, or schedule reasons, the task evidence must explicitly state:
+  - what part of the spec is implemented now,
+  - what remains deferred,
+  - why the approximation is acceptable for this gate,
+  - which later task closes the gap.
+
+#### No-drift rule
+The following must stay aligned:
+- `.sisyphus/plans/corrosion-roadmap.md`
+- `docs/new-detailed-specs/*.md`
+- `docs/full-feature-surface.md`
+- `docs/sound-direction-brief.md`
+- exposed parameter names / GUI terminology in code
+
+If one changes, the others must be updated in the same task or listed explicitly as follow-up work.
 
 ### Core Objective
 Take Corrosion from its current Gate 0 prototype state to a release-ready 1.0.0 VST3+CLAP industrial physical-modeling instrument that meets every PRD pass criterion across all 6 gates without compromising real-time safety or product identity.
@@ -95,6 +147,7 @@ Take Corrosion from its current Gate 0 prototype state to a release-ready 1.0.0 
 ### Must Have
 - All 6 gate pass-criteria from `docs/IMPLEMENTATION_PLAN.md` satisfied.
 - Real-time safety preserved at every gate (cross-gate guardrails).
+- Every DSP-facing task from Gate 3 onward explicitly references the relevant file(s) in `docs/new-detailed-specs/` in both implementation notes and evidence.
 - 100+ factory presets covering bass, percussion, drone, transition, cinematic-impact families.
 - VST3 and CLAP both build and load in REAPER.
 - User manual, developer doc, sound design guide.
@@ -110,6 +163,7 @@ Take Corrosion from its current Gate 0 prototype state to a release-ready 1.0.0 
 - **No advancing past a gate while pass-criteria are unmet** — fail-closed gating.
 - **No GUI scope beyond Gate 4's "basic custom GUI"** until Gate 6 polish phase.
 - **No manual-only acceptance criteria** — every QA scenario must be agent-executable via bash/curl/tmux.
+- **No algorithm drift away from `docs/new-detailed-specs/` without an explicit evidence note and follow-up task**.
 
 ---
 
@@ -132,6 +186,109 @@ Every task ships with at least one happy-path and one failure/edge scenario.
 - **Sequencer tasks**: rendered project bounce + bash analysis of bounce WAV to detect transient onsets at expected sample positions (proxy for step timing).
 - **Preset tasks**: `cargo run --bin preset-render -- --preset <name>` produces bounce; assert bounce non-silent and non-clipping.
 - **Documentation tasks**: `markdownlint` (or simple line-count + section-presence check) + grep-based content checks.
+
+### DSP Build Process Protocol (Gate 3 onward, MANDATORY)
+
+Every task that touches exciters, resonators, transforms, interaction, envelopes/modulation, post-processing, sequencing, or GUI metaphor must follow this implementation sequence:
+
+1. **Read the roadmap task first**
+   - extract `What to do`, `Must NOT do`, references, and QA scenarios.
+
+2. **Read the relevant detailed spec file(s)**
+   - `signal-chain.md` for block ordering and control/audio-rate boundaries.
+   - `exciter-algorithms.md` for exciter categories, names, and exposed controls.
+   - `resonator-algorithms.md` for object identity and modal/object math.
+   - `transformation-algorithms.md` for transform equations and velocity-expressiveness semantics.
+   - `exciter-resonator-interaction.md` for coupling, strike position, dynamic interaction, and MSEG behavior.
+   - `post-processing.md` for filter/drive/body/stereo/space/output stage intent.
+
+3. **Extract the gate-appropriate subset**
+   - identify which portions of the spec are mandatory now,
+   - which remain hidden/internal,
+   - which are intentionally deferred to later gates.
+
+4. **Map the spec to concrete code boundaries**
+   - module/file path,
+   - per-voice vs post-mix,
+   - control-rate vs audio-rate,
+   - parameter exposure vs internal state,
+   - evidence artifact path.
+
+5. **Implement without breaking named model identity**
+   - preserve the algorithm family,
+   - preserve user-facing parameter names,
+   - preserve the signal-chain placement unless the roadmap task explicitly changes it.
+
+6. **Document simplifications explicitly**
+   - if a task uses a staged approximation, record the approximation and the remaining gap in evidence and notes.
+
+7. **Verify against both QA and spec intent**
+   - pass the task QA scenario,
+   - verify the implementation still matches the detailed spec qualitatively,
+   - update notepads with any discovered carry-forward issue.
+
+### Per-Task Spec Checklist Template (Gate 3 onward, MANDATORY)
+
+Every Gate 3+ task must include this checklist in its working notes or evidence summary:
+
+```
+SPEC CHECKLIST
+==============
+Task ID:
+Relevant roadmap section:
+Relevant spec files:
+
+[ ] Read `What to do`
+[ ] Read `Must NOT do`
+[ ] Read QA scenario
+[ ] Read all relevant `docs/new-detailed-specs/*.md`
+[ ] Read `docs/full-feature-surface.md` if control/feature surface is touched
+[ ] Read `docs/sound-direction-brief.md` if sonic identity is touched
+[ ] Confirm signal-chain placement
+[ ] Confirm control-rate vs audio-rate placement
+[ ] Confirm exposed parameter names match docs
+[ ] Confirm algorithm family name still matches spec
+[ ] Record any simplification/deviation explicitly
+[ ] Run QA scenario
+[ ] Save evidence with cited spec references
+```
+
+This checklist is not optional for DSP-facing tasks.
+
+### Approximation vs Full-Spec Evidence Format (Gate 3 onward, MANDATORY)
+
+If a task ships anything less than the full detailed-spec algorithm, its evidence file must include a section in exactly this shape:
+
+```
+SPEC IMPLEMENTATION STATUS
+==========================
+Task ID: <task>
+Spec files: <list>
+
+Implemented Now:
+- <what is fully implemented>
+
+Deferred From Spec:
+- <what is intentionally not yet implemented>
+
+Reason For Defer:
+- CPU
+- scope
+- gate sequencing
+- dependency not landed
+
+User-Facing Impact:
+- <what the user gets now>
+- <what is not yet exposed/available>
+
+Follow-Up Task:
+- <future roadmap task ID>
+
+Verification:
+- <tests/logs/bounces proving current subset works>
+```
+
+If the implementation is full-spec, the same section must still appear, with `Deferred From Spec: none`.
 
 Evidence path convention: `.sisyphus/evidence/task-{gate}-{num}-{slug}.{wav,log,txt,png}`.
 
@@ -1281,7 +1438,26 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
 ### Wave 4 — Gate 3 Industrial Character / Version 0.2.0
 
+> **Mandatory reference set for Gate 3**: this is the first wave where `docs/new-detailed-specs/` becomes the primary algorithm-definition layer. Every Gate 3 task must read and cite the relevant spec file(s) before implementation. Gate 3 may stage fidelity for CPU or scope reasons, but it must preserve the named algorithm family, signal-chain position, and user-facing control vocabulary from the detailed specs.
+
 > Each Gate 3 task follows: (impl) + (cargo test or scripted bounce metric) + commit. QA scenarios condensed; pattern same as Gate 2.
+
+#### Gate 3 Task → Spec Mapping
+
+| Task | Primary Spec Files | Secondary Spec Files | Why |
+|---|---|---|---|
+| G3-1 Scrape exciter core | `exciter-algorithms.md` | `exciter-resonator-interaction.md`, `signal-chain.md` | Defines scrape category, state variables, and coupling rules |
+| G3-2 Scrape flavors | `exciter-algorithms.md` | `sound-direction-brief.md` | Defines bowed/brake/tension scrape identities |
+| G3-3 Chain object | `resonator-algorithms.md` | `full-feature-surface.md`, `sound-direction-brief.md` | Defines chain as a true modal object |
+| G3-4 Stereo spread / Width | `post-processing.md` | `signal-chain.md` | Defines stereo stage and downstream placement |
+| G3-5 Body resonator | `post-processing.md` | `signal-chain.md` | Defines body stage as post-resonator mass/body layer |
+| G3-6 Damage rattle pass | `transformation-algorithms.md` | `sound-direction-brief.md`, `exciter-resonator-interaction.md` | Defines damage as structural compromise, not simple detune |
+| G3-7 Drive character pass | `post-processing.md` | `sound-direction-brief.md` | Defines aggressive post saturation identity |
+| G3-8 Velocity expressiveness | `transformation-algorithms.md` | `exciter-algorithms.md`, `exciter-resonator-interaction.md` | Defines force/brightness/rattle/decay velocity behavior |
+| G3-9 Presets | `full-feature-surface.md` | `sound-direction-brief.md` | Defines category expansion targets |
+| G3-10 Stereo/body automation | `post-processing.md` | `signal-chain.md` | Tests the new post stages under modulation |
+| G3-11 Regression | all Gate 3-touched spec files | `signal-chain.md` | Verifies no drift/regression |
+| G3-12 Summary | all cited Gate 3 spec files | — | Closure must mention spec adherence |
 
 - [ ] G3-1. Scrape exciter core
 
@@ -1291,7 +1467,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Recommended Agent Profile**: `artistry` — DSP design with novel constraints. Blocked By: gate-2-complete.
 
-  **References**: PRD search "scrape", "stick-slip", "bowed".
+  **References**: PRD search "scrape", "stick-slip", "bowed". `docs/new-detailed-specs/exciter-algorithms.md`. `docs/new-detailed-specs/exciter-resonator-interaction.md`.
 
   **QA Scenarios**:
   ```
@@ -1310,6 +1486,8 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
   **What to do**: Author 3 internal "scrape mode" presets in code (constants, not user-exposed) covering the three sound targets. Provide them as `ScrapeFlavor` enum tied to specific stick-slip and roughness envelope settings. Compare-render each.
 
   **Recommended Agent Profile**: `deep`. Blocked By: G3-1.
+
+  **References**: `docs/new-detailed-specs/exciter-algorithms.md`. `docs/sound-direction-brief.md`.
 
   **QA Scenarios**:
   ```
@@ -1331,6 +1509,8 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Recommended Agent Profile**: `artistry`. Blocked By: gate-2-complete.
 
+  **References**: `docs/new-detailed-specs/resonator-algorithms.md`. `docs/full-feature-surface.md`.
+
   **QA Scenarios**:
   ```
   Scenario: Chain distinct from pipe/plate/tank
@@ -1348,6 +1528,8 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
   **What to do**: Distribute modes across L/R based on a deterministic per-mode pan derived from frequency. Add `Width` parameter (0=mono, 1=full spread). Mid/side balance preserved.
 
   **Recommended Agent Profile**: `deep`. Blocked By: gate-2-complete.
+
+  **References**: `docs/new-detailed-specs/post-processing.md`. `docs/new-detailed-specs/signal-chain.md`.
 
   **QA Scenarios**:
   ```
@@ -1369,6 +1551,8 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Recommended Agent Profile**: `deep`. Blocked By: gate-2-complete.
 
+  **References**: `docs/new-detailed-specs/post-processing.md`. `docs/new-detailed-specs/signal-chain.md`.
+
   **QA Scenarios**:
   ```
   Scenario: Body adds low-mid energy without smearing decay
@@ -1386,6 +1570,8 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
   **What to do**: Improve the damage transform's output — make it sound more "rattling industrial" rather than just detuned. Possible: add an envelope-modulated noise burst tied to peak crossings; tune via the existing `DamageAmount` API.
 
   **Recommended Agent Profile**: `artistry`. Blocked By: gate-2-complete.
+
+  **References**: `docs/new-detailed-specs/transformation-algorithms.md`. `docs/sound-direction-brief.md`.
 
   **QA Scenarios**:
   ```
@@ -1406,6 +1592,8 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Recommended Agent Profile**: `artistry`. Blocked By: gate-2-complete.
 
+  **References**: `docs/new-detailed-specs/post-processing.md`. `docs/sound-direction-brief.md`.
+
   **QA Scenarios**:
   ```
   Scenario: High drive does not collapse dynamics
@@ -1423,6 +1611,8 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
   **What to do**: Extend G2-6: velocity also modulates damage modulation depth (harder hit ⇒ slightly more damage character) and excitation impulse decay rate.
 
   **Recommended Agent Profile**: `deep`. Blocked By: G2-6.
+
+  **References**: `docs/new-detailed-specs/transformation-algorithms.md`. `docs/new-detailed-specs/exciter-algorithms.md`.
 
   **QA Scenarios**:
   ```
@@ -1519,6 +1709,25 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
 ### Wave 5 — Gate 4 Product UX / Version 0.3.0
 
+> **Mandatory reference set for Gate 4**: all UI/UX work must preserve the physical-metaphor vocabulary in `docs/sound-direction-brief.md`, the surfaced control inventory in `docs/full-feature-surface.md`, and the architecture boundaries in `docs/new-detailed-specs/signal-chain.md`. No Gate 4 feature may rename or visually frame DSP blocks in a way that disconnects them from the detailed specs.
+
+#### Gate 4 Task → Spec Mapping
+
+| Task | Primary Spec Files | Secondary Spec Files | Why |
+|---|---|---|---|
+| G4-1 Custom GUI scaffold | `full-feature-surface.md` | `sound-direction-brief.md`, `signal-chain.md` | Locks Exciter/Object/Damage/Space metaphor and layout |
+| G4-2 Mass macro | `full-feature-surface.md` | `sound-direction-brief.md` | Macro maps Object + Size with physical intent |
+| G4-3 Corrosion macro | `full-feature-surface.md` | `sound-direction-brief.md`, `transformation-algorithms.md` | Macro maps rust/body damping intent |
+| G4-4 Violence macro | `full-feature-surface.md` | `sound-direction-brief.md`, `exciter-algorithms.md`, `post-processing.md` | Macro maps excitation force + drive |
+| G4-5 Damage macro | `full-feature-surface.md` | `sound-direction-brief.md`, `transformation-algorithms.md` | Macro maps damage + roughness intent |
+| G4-6 Macro mapping persistence | `full-feature-surface.md` | `signal-chain.md` | Keeps exposed macro semantics aligned with internals |
+| G4-7 Randomizer modes | `full-feature-surface.md` | `sound-direction-brief.md` | Must randomize within safe, on-brand ranges |
+| G4-8 Mutate + safety constraints | `full-feature-surface.md` | `sound-direction-brief.md` | Keeps random variation near valid physical patches |
+| G4-9 Preset browser | `full-feature-surface.md` | — | Uses preset taxonomy and surfaced controls |
+| G4-10 Resonator feedback widget | `signal-chain.md` | `resonator-algorithms.md`, `full-feature-surface.md` | Visualizes physical state, not generic synth abstractions |
+| G4-11 Regression | all Gate 3/4-touched spec files | — | Verifies GUI layer didn’t break spec alignment |
+| G4-12 Summary | all cited Gate 4 spec files | — | Closure must mention metaphor/spec adherence |
+
 - [ ] G4-1. Custom GUI scaffold (Exciter → Object → Damage → Space layout)
 
   **What to do**: Replace G2-8's generic editor. Custom layout with 4 sections (Exciter, Object, Damage, Space). Each section uses physical metaphor naming. No oscillator/filter/amp framing. Skin defined in `src/gui/`.
@@ -1527,7 +1736,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Recommended Agent Profile**: `visual-engineering`. Blocked By: gate-3-complete.
 
-  **References**: PRD UI section.
+  **References**: PRD UI section. `docs/full-feature-surface.md`. `docs/sound-direction-brief.md`. `docs/new-detailed-specs/signal-chain.md`.
 
   **QA Scenarios**:
   ```
@@ -1548,7 +1757,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 - [ ] G4-4. Violence macro
 - [ ] G4-5. Damage macro
 
-  **What to do (G4-2..5 share template)**: Each macro is a single-knob param. On change, it scales/biases an internal group of underlying params via a fixed mapping table in `src/macros/mod.rs`. Mass = Object + Size; Corrosion = Rust + body damping; Violence = Drive + excitation force; Damage = Damage + roughness.
+  **What to do (G4-2..5 share template)**: Each macro is a single-knob param. On change, it scales/biases an internal group of underlying params via a fixed mapping table in `src/macros/mod.rs`. Mass = Object + Size; Corrosion = Rust + body damping; Violence = Drive + excitation force; Damage = Damage + roughness. These mappings must preserve the sonic intent documented in `docs/sound-direction-brief.md`, not act as arbitrary convenience remaps.
 
   **Recommended Agent Profile**: `deep` (each). Parallel within Wave 5. Blocked By: G4-1.
 
@@ -1718,6 +1927,25 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 ---
 
 ### Wave 6 — Gate 5 Sequenced Instrument
+
+> **Mandatory reference set for Gate 5**: sequencer, step-lock, and host-sync work must use the parameter/control surface exactly as defined in `docs/full-feature-surface.md`. Any parameter lock introduced in this wave must preserve the underlying algorithm identity defined by `docs/new-detailed-specs/*.md` when recalled per step.
+
+#### Gate 5 Task → Spec Mapping
+
+| Task | Primary Spec Files | Secondary Spec Files | Why |
+|---|---|---|---|
+| G5-1 Step structure/runtime model | `full-feature-surface.md` | `signal-chain.md` | Defines sequence fields and lockable domains |
+| G5-2 Note/velocity/probability/microtiming | `full-feature-surface.md` | `transformation-algorithms.md`, `exciter-algorithms.md` | Velocity semantics must preserve physical meaning |
+| G5-3 Host sync | `signal-chain.md` | `full-feature-surface.md` | Places sequencer relative to modulation/audio flow |
+| G5-4 Loop/restart stability | `signal-chain.md` | — | Protects transport alignment assumptions |
+| G5-5 Object lock | `resonator-algorithms.md` | `full-feature-surface.md` | Locked object must still mean the same modal family |
+| G5-6 Exciter lock | `exciter-algorithms.md` | `exciter-resonator-interaction.md`, `full-feature-surface.md` | Locked exciter must preserve named exciter identity |
+| G5-7 Rust/Damage/Drive locks | `transformation-algorithms.md`, `post-processing.md` | `full-feature-surface.md` | Locked transforms/post states must preserve semantics |
+| G5-8 Lock persistence/automation precedence | all lock-related spec files | `signal-chain.md` | Ensures recall order doesn’t corrupt algorithm meaning |
+| G5-9 Kit mode | `full-feature-surface.md` | `sound-direction-brief.md` | Maps pads to preset/timbre families coherently |
+| G5-10 Host sync tests | `signal-chain.md` | — | Verifies sequencer timing against architecture assumptions |
+| G5-11 Timing matrix | `signal-chain.md` | — | Verifies transport timing invariants broadly |
+| G5-12 Summary | all cited Gate 5 spec files | — | Closure must mention step-lock/spec adherence |
 
 - [ ] G5-1. Sequencer step data structure + runtime playback model
 
@@ -1934,6 +2162,28 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 ---
 
 ### Wave 7 — Gate 6 Version 1.0 Release
+
+> **Mandatory reference set for Gate 6**: before release closeout, the user-facing docs (`docs/user-manual.md`, `docs/developer.md`, `docs/sound-design-guide.md`) must explicitly cross-reference `docs/full-feature-surface.md`, `docs/sound-direction-brief.md`, and the relevant portions of `docs/new-detailed-specs/*.md` so the release documentation and shipped implementation cannot drift apart.
+
+#### Gate 6 Task → Spec Mapping
+
+| Task | Primary Spec Files | Secondary Spec Files | Why |
+|---|---|---|---|
+| G6-1 Sequencer finalization | `signal-chain.md` | `full-feature-surface.md` | Release-quality timing must preserve sequence architecture |
+| G6-2 Preset browser reliability | `full-feature-surface.md` | — | Browser must scale with final preset surface |
+| G6-3 Exciter count confirmation | `exciter-algorithms.md` | `sound-direction-brief.md`, `full-feature-surface.md` | Final exciter roster must match named families |
+| G6-4 Body/space type confirmation | `post-processing.md` | `full-feature-surface.md`, `sound-direction-brief.md` | Final space roster must match post/space intent |
+| G6-5 Modulation mappings | `exciter-resonator-interaction.md` | `transformation-algorithms.md`, `post-processing.md`, `full-feature-surface.md` | Mod matrix must target real physical/control domains |
+| G6-6 100+ presets | `full-feature-surface.md` | `sound-direction-brief.md` | Final preset families and counts are defined there |
+| G6-7 Release bundle + installer | all user-facing docs | `full-feature-surface.md` | Bundle must ship the aligned docs/spec-derived surface |
+| G6-8 User manual | `full-feature-surface.md` | `sound-direction-brief.md`, relevant `docs/new-detailed-specs/*.md` | User docs must describe the final instrument surface and metaphors |
+| G6-9 Developer docs | all `docs/new-detailed-specs/*.md` | `signal-chain.md`, `full-feature-surface.md` | Developer docs must explain the actual architecture and algorithm families |
+| G6-10 Sound-design guide | `sound-direction-brief.md` | `full-feature-surface.md` | Recipes must reflect the intended sonic identity |
+| G6-11 README/CHANGELOG/INSTALL | `full-feature-surface.md` | release/install docs | Public docs must stay consistent with the shipped surface |
+| G6-12 Pluginval release QA | all implemented spec families indirectly | — | Final QA guards release artifacts |
+| G6-13 Host-load tests | `signal-chain.md` | release docs | Confirms shipped hosts load the intended artifact set |
+| G6-14 SR/buffer matrix | `signal-chain.md` | all touched DSP spec files indirectly | Verifies architecture stability under final runtime matrix |
+| G6-15 Summary/final validation | all cited Gate 6 spec files | — | Release closeout must explicitly confirm spec alignment |
 
 - [ ] G6-1. Finalize sequencer + per-step locks for release quality
 

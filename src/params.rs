@@ -1,9 +1,8 @@
-use serde::{Deserialize, Serialize};
 use nih_plug::prelude::*;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 #[cfg(feature = "gui")]
 use nih_plug_egui::EguiState;
-#[cfg(feature = "gui")]
-use std::sync::Arc;
 
 #[derive(Params)]
 pub struct CorrosionParams {
@@ -58,12 +57,24 @@ impl Object {
     }
 }
 
+pub fn object_param(default: i32) -> IntParam {
+    IntParam::new("Object", default, IntRange::Linear { min: 0, max: 2 })
+        .with_value_to_string(Arc::new(|value| Object::from_int(value).name().to_string()))
+        .with_string_to_value(Arc::new(|string| {
+            let normalized = string.trim();
+            [Object::Pipe, Object::Plate, Object::Tank]
+                .into_iter()
+                .find(|object| object.name().eq_ignore_ascii_case(normalized))
+                .map(Object::to_int)
+        }))
+}
+
 impl Default for CorrosionParams {
     fn default() -> Self {
         Self {
             #[cfg(feature = "gui")]
             editor_state: EguiState::from_size(400, 300),
-            object: IntParam::new("Object", 0, IntRange::Linear { min: 0, max: 2 }),
+            object: object_param(0),
             size: FloatParam::new(
                 "Size",
                 1.0,

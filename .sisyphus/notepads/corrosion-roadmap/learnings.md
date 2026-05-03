@@ -130,3 +130,16 @@ Target directory redirected to `../corrotion-target` to avoid polluting repo.
 
 - Gate 2 closed cleanly once the evidence summary was written and the pass-criteria table was reduced to explicit PASS/FAIL rows.
 - The closure file should cite concrete artifact paths for every criterion so later gate reviews do not need to infer evidence from prose.
+
+## 2026-05-03 - Post-Gate-2 FL Studio Triage
+
+- The chromatic-arp/polyphony failure was in `Corrosion::process()`, not the voice manager: the process loop only fetched a single `context.next_event()` for the whole buffer and never advanced to later MIDI events.
+- The host-facing object parameter needs a custom `with_value_to_string()` formatter; otherwise the UI exposes raw integers even though the domain is semantically `Pipe` / `Plate` / `Tank`.
+- The next sound-design pass should wait for multiple exciters, because the user wants the resonator retune judged together with the future exciter identity rather than polishing the current hit-only path in isolation.
+
+## 2026-05-03 - Detailed Spec Integration
+
+- `docs/new-detailed-specs/` is now the authoritative algorithm-detail layer from Gate 3 onward; future tasks must treat those files as mandatory references, not optional inspiration.
+- The roadmap should control sequencing and gate scope, while the detailed spec pack should control algorithm identity, signal-chain placement, control vocabulary, and interaction semantics.
+- The build process for all future DSP tasks should explicitly read: roadmap task -> relevant detailed spec file(s) -> surface docs (`docs/full-feature-surface.md`, `docs/sound-direction-brief.md`) before implementation starts.
+- Any staged simplification of a detailed-spec algorithm must be written down in task evidence immediately; otherwise later sessions will assume the full spec already landed.

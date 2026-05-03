@@ -22,6 +22,46 @@ pub fn apply_output_limiter(sample: f32) -> f32 {
     sample.clamp(-LIMITER_THRESHOLD, LIMITER_THRESHOLD)
 }
 
+fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
+    match event {
+        NoteEvent::NoteOn { note, velocity, .. } => {
+            let profile = match Object::from_int(plugin.params.object.value()) {
+                Object::Pipe => dsp::ModalProfileId::Pipe,
+                Object::Plate => dsp::ModalProfileId::Plate,
+                Object::Tank => dsp::ModalProfileId::Tank,
+            };
+            let size = plugin.params.size.value();
+            let rust = plugin.params.rust.value();
+            let damage = plugin.params.damage.value();
+            plugin
+                .voice_manager
+                .note_on(note, velocity as f32, profile, size, rust, damage);
+        }
+        NoteEvent::NoteOff { note, .. } => {
+            plugin.voice_manager.note_off(note);
+        }
+        _ => {}
+    }
+}
+
+fn process_pending_events<F>(
+    plugin: &mut Corrosion,
+    sample_id: u32,
+    next_event: &mut Option<NoteEvent<()>>,
+    mut fetch_next: F,
+) where
+    F: FnMut() -> Option<NoteEvent<()>>,
+{
+    while let Some(event) = *next_event {
+        if event.timing() > sample_id {
+            break;
+        }
+
+        handle_note_event(plugin, event);
+        *next_event = fetch_next();
+    }
+}
+
 pub fn corrosion_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
@@ -95,31 +135,11 @@ impl Plugin for Corrosion {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        let next_event = context.next_event();
+        let mut next_event = context.next_event();
         let sample_rate = context.transport().sample_rate as u32;
 
         for (sample_id, channel_samples) in buffer.iter_samples().enumerate() {
-            if let Some(event) = next_event {
-                if event.timing() == sample_id as u32 {
-                    match event {
-                        NoteEvent::NoteOn { note, velocity, .. } => {
-                            let profile = match Object::from_int(self.params.object.value()) {
-                                Object::Pipe => dsp::ModalProfileId::Pipe,
-                                Object::Plate => dsp::ModalProfileId::Plate,
-                                Object::Tank => dsp::ModalProfileId::Tank,
-                            };
-                            let size = self.params.size.value();
-                            let rust = self.params.rust.value();
-                            let damage = self.params.damage.value();
-                            self.voice_manager.note_on(note, velocity as f32, profile, size, rust, damage);
-                        }
-                        NoteEvent::NoteOff { note, .. } => {
-                            self.voice_manager.note_off(note);
-                        }
-                        _ => {}
-                    }
-                }
-            }
+            process_pending_events(self, sample_id as u32, &mut next_event, || context.next_event());
 
             let drive = self.params.drive.value();
             let output_gain = self.params.output.value();
@@ -187,6 +207,79 @@ impl Plugin for Corrosion {
         {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{handle_note_event, process_pending_events, Corrosion, Object};
+    use nih_plug::prelude::NoteEvent;
+
+    #[test]
+    fn processes_multiple_note_events_across_buffer() {
+        let mut plugin = Corrosion::default();
+        let mut single_note_plugin = Corrosion::default();
+        let mut events = vec![
+            NoteEvent::NoteOn {
+                timing: 0,
+                voice_id: None,
+                channel: 0,
+                note: 48,
+                velocity: 1.0,
+            },
+            NoteEvent::NoteOn {
+                timing: 3,
+                voice_id: None,
+                channel: 0,
+                note: 52,
+                velocity: 1.0,
+            },
+            NoteEvent::NoteOn {
+                timing: 7,
+                voice_id: None,
+                channel: 0,
+                note: 55,
+                velocity: 1.0,
+            },
+        ]
+        .into_iter();
+
+        let mut next_event = events.next();
+
+        for sample_id in 0..8 {
+            process_pending_events(&mut plugin, sample_id, &mut next_event, || events.next());
+        }
+
+        handle_note_event(
+            &mut single_note_plugin,
+            NoteEvent::NoteOn {
+                timing: 0,
+                voice_id: None,
+                channel: 0,
+                note: 48,
+                velocity: 1.0,
+            },
+        );
+
+        let mut stacked_energy = 0.0f32;
+        let mut single_note_energy = 0.0f32;
+        for _ in 0..48_000 {
+            stacked_energy += plugin.voice_manager.process_sample(48_000).abs();
+            single_note_energy += single_note_plugin.voice_manager.process_sample(48_000).abs();
+        }
+
+        assert!(
+            stacked_energy > single_note_energy * 1.25,
+            "stacked notes should accumulate energy, stacked={stacked_energy} single={single_note_energy}"
+        );
+        assert!(next_event.is_none(), "all queued events should be consumed");
+    }
+
+    #[test]
+    fn object_param_displays_names() {
+        let params = crate::CorrosionParams::default();
+
+        assert_eq!(params.object.to_string(), Object::Pipe.name());
     }
 }
 

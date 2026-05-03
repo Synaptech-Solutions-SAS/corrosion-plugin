@@ -1,0 +1,37 @@
+{
+  "path": ".sisyphus/evidence/task-G2-9-bin-smoke.wav",
+  "sample_rate": 48000,
+  "channels": 1,
+  "sample_width_bytes": 2,
+  "bit_depth": 16,
+  "frames": 96000,
+  "duration_seconds": 2.0,
+  "compression_type": "NONE",
+  "compression_name": "not compressed",
+  "total_samples": 96000,
+  "channel_data": {
+    "channel_0": {
+      "peak": 0.761566162109375,
+      "rms": 0.3579210719106378,
+      "mean": -0.0007479022343953451,
+      "min": -0.761566162109375,
+      "max": 0.761566162109375,
+      "zero_crossings": 945,
+      "nan_or_inf_samples": 0,
+      "first_4_samples": [
+        0.201507568359375,
+        0.39593505859375,
+        0.543365478515625,
+        0.647491455078125
+      ]
+    }
+  },
+  "interleaved_preview": {
+    "first_4_samples": [
+      0.201507568359375,
+      0.39593505859375,
+      0.543365478515625,
+      0.647491455078125
+    ]
+  }
+}
