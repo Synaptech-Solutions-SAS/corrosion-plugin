@@ -1141,7 +1141,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-2(presets): preset file format, IO, and preset-render bin`.
 
-- [ ] G2-10. 20 factory presets across bass / clang / boom / short-hit / long-tail
+- [x] G2-10. 20 factory presets across bass / clang / boom / short-hit / long-tail
 
   **What to do**: Author 20 preset JSON files under `presets/factory/`, distributed: ≥4 bass, ≥4 clang/impact, ≥4 boom/low-body, ≥4 short-hit, ≥4 long-tail. Each preset has a descriptive name. Validate via the load API and a render bounce that asserts the preset is non-silent.
 
@@ -1170,7 +1170,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
   **Commit**: `gate-2(presets): 20 factory presets across MVP categories`.
 
-- [ ] G2-11. Hard safety limiter / output clip
+- [x] G2-11. Hard safety limiter / output clip
 
   **What to do**: Add a final-stage limiter (simple lookahead-free hard knee at -0.3 dBFS) after Output gain. This is in addition to the G1-6 raw clamp.
 
