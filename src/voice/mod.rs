@@ -37,7 +37,16 @@ impl Voice {
         }
     }
 
-    pub fn note_on(&mut self, note: u8, velocity: f32, profile_id: ModalProfileId, start_frame: u64) {
+    pub fn note_on(
+        &mut self,
+        note: u8,
+        velocity: f32,
+        profile_id: ModalProfileId,
+        start_frame: u64,
+        size: f32,
+        rust: f32,
+        damage: f32,
+    ) {
         self.active = true;
         self.note = note;
         self.velocity = velocity;
@@ -47,9 +56,9 @@ impl Voice {
         self.start_frame = start_frame;
         self.resonator = PlaceholderResonator::with_profile_size_rust_and_damage(
             profile_id,
-            SizeScale::default(),
-            RustAmount::default(),
-            DamageAmount::default(),
+            SizeScale::new(size),
+            RustAmount::new(rust),
+            DamageAmount::new(damage),
         );
     }
 
@@ -146,14 +155,14 @@ mod tests {
     #[test]
     fn note_on_activates_voice() {
         let mut voice = Voice::new();
-        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0);
+        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0);
         assert!(voice.is_active());
     }
 
     #[test]
     fn note_off_deactivates_voice() {
         let mut voice = Voice::new();
-        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0);
+        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0);
         voice.note_off();
         assert!(!voice.is_active());
     }
@@ -161,7 +170,7 @@ mod tests {
     #[test]
     fn note_off_natural_decay() {
         let mut voice = Voice::new();
-        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0);
+        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0);
 
         let sample_rate = 48_000u32;
         let note_off_frame = 4800;
@@ -198,7 +207,7 @@ mod tests {
     #[test]
     fn output_clamped_to_unit_range() {
         let mut voice = Voice::new();
-        voice.note_on(60, 127.0, ModalProfileId::Pipe, 0);
+        voice.note_on(60, 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0);
 
         let sample_rate = 48_000u32;
         for _ in 0..48_000 {
@@ -213,7 +222,7 @@ mod tests {
     #[test]
     fn output_finite_over_long_render() {
         let mut voice = Voice::new();
-        voice.note_on(36, 127.0, ModalProfileId::Pipe, 0);
+        voice.note_on(36, 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0);
 
         let sample_rate = 48_000u32;
         for _ in 0..96_000 {
@@ -225,7 +234,7 @@ mod tests {
     #[test]
     fn active_voice_not_falsely_deactivated() {
         let mut voice = Voice::new();
-        voice.note_on(60, 100.0, ModalProfileId::Tank, 0);
+        voice.note_on(60, 100.0, ModalProfileId::Tank, 0, 1.0, 0.0, 0.0);
 
         let sample_rate = 48_000u32;
         let half_second = 48_000 / 2;

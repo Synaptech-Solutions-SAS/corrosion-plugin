@@ -85,7 +85,10 @@ impl Plugin for Corrosion {
                                 Object::Plate => dsp::ModalProfileId::Plate,
                                 Object::Tank => dsp::ModalProfileId::Tank,
                             };
-                            self.voice_manager.note_on(note, velocity as f32, profile);
+                            let size = self.params.size.value();
+                            let rust = self.params.rust.value();
+                            let damage = self.params.damage.value();
+                            self.voice_manager.note_on(note, velocity as f32, profile, size, rust, damage);
                         }
                         NoteEvent::NoteOff { note, .. } => {
                             self.voice_manager.note_off(note);

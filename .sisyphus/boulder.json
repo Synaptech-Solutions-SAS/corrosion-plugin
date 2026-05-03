@@ -12,5 +12,16 @@
   "agent": "atlas",
   "current_gate": "Gate 2",
   "gate_1_status": "CLOSED",
-  "gate_2_status": "IN_PROGRESS"
+  "gate_2_status": "IN_PROGRESS",
+  "task_sessions": {
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_2138a5867ffe2qoqPJnCUDQQc6",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-03T07:11:02.118Z"
+    }
+  }
 }

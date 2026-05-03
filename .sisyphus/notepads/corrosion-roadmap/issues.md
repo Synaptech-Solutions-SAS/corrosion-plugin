@@ -70,3 +70,5 @@ These are known limitations tracked for future gates, not blockers:
 - Windows bundles validated via file command (PE32+ format)
 - In-host Windows testing would require Wine or Windows VM
 - macOS bundles validated via GitHub Actions CI
+
+- `lsp_diagnostics` could not run in this environment because `rust-analyzer` is not installed; build + pluginval were used instead for verification.

@@ -97,3 +97,6 @@ clap-validator validate target/bundled/Corrosion.clap/Corrosion.clap  # 18/18 pa
 
 ### Configuration
 Target directory redirected to `../corrotion-target` to avoid polluting repo.
+
+- Gate 2 param expansion: keep stable `#[id]` values on every host-facing param (`object`, `size`, `rust`, `damage`, `drive`, `output`) so automation survives reordering.
+- Use `FloatParam::new(name, default, FloatRange::Linear { min, max })` for the MVP scalar controls; `Output` can stay as linear gain with a 0 dB default and +12 dB ceiling.

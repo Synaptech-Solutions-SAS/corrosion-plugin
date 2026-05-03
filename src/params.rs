@@ -2,10 +2,18 @@ use nih_plug::prelude::*;
 
 #[derive(Params)]
 pub struct CorrosionParams {
-    #[id = "gain"]
-    pub gain: FloatParam,
     #[id = "object"]
     pub object: IntParam,
+    #[id = "size"]
+    pub size: FloatParam,
+    #[id = "rust"]
+    pub rust: FloatParam,
+    #[id = "damage"]
+    pub damage: FloatParam,
+    #[id = "drive"]
+    pub drive: FloatParam,
+    #[id = "output"]
+    pub output: FloatParam,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,15 +44,47 @@ impl Object {
 impl Default for CorrosionParams {
     fn default() -> Self {
         Self {
-            gain: FloatParam::new(
-                "Gain",
+            object: IntParam::new("Object", 0, IntRange::Linear { min: 0, max: 2 }),
+            size: FloatParam::new(
+                "Size",
+                1.0,
+                FloatRange::Linear {
+                    min: 0.25,
+                    max: 2.0,
+                },
+            ),
+            rust: FloatParam::new(
+                "Rust",
+                0.0,
+                FloatRange::Linear {
+                    min: 0.0,
+                    max: 1.0,
+                },
+            ),
+            damage: FloatParam::new(
+                "Damage",
+                0.0,
+                FloatRange::Linear {
+                    min: 0.0,
+                    max: 1.0,
+                },
+            ),
+            drive: FloatParam::new(
+                "Drive",
+                0.0,
+                FloatRange::Linear {
+                    min: 0.0,
+                    max: 1.0,
+                },
+            ),
+            output: FloatParam::new(
+                "Output",
                 util::db_to_gain(0.0),
                 FloatRange::Linear {
                     min: 0.0,
                     max: util::db_to_gain(12.0),
                 },
             ),
-            object: IntParam::new("Object", 0, IntRange::Linear { min: 0, max: 2 }),
         }
     }
 }
