@@ -112,8 +112,11 @@ cargo test --workspace
 # Build Windows bundles (cross-compile)
 ./bundle-win.sh
 
-# Run offline renderer
-cargo run --release --bin render
+# Run offline debug renderer suites (family/rust/damage)
+cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite all
+
+# Render all factory presets to WAV + metrics manifest
+cargo run --target x86_64-unknown-linux-gnu --bin render_presets
 
 # Validate plugins
 pluginval --strictness-level 5 --validate target/bundled/Corrosion.vst3 --skip-gui-tests
@@ -142,8 +145,8 @@ clap-validator validate target/bundled/Corrosion.clap/Corrosion.clap --only-fail
 │   ├── lib.rs             # Plugin entry point
 │   ├── params.rs          # Host parameters
 │   ├── bin/
-│   │   ├── render.rs      # CLI offline renderer
-│   │   └── preset_render.rs # Preset rendering utility
+│   │   ├── render.rs      # Suite-based debug renderer
+│   │   └── render_presets.rs # Batch preset renderer + metrics
 │   ├── dsp/               # DSP modules
 │   │   ├── mod.rs
 │   │   ├── body.rs        # Body resonator
@@ -248,10 +251,33 @@ file target/bundled-win/Corrosion.vst3/Contents/x86_64-win/Corrosion.vst3
 ### Run The Offline Renderer
 
 ```bash
-cargo run --release --bin render
+# Render all comparison suites into output/
+cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite all
+
+# Render only one suite
+cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite damage
 ```
 
-Output goes to `output/damage-variations/`.
+Output goes to `output/family-comparisons/`, `output/rust-variations/`, and `output/damage-variations/`.
+
+Useful debug flags:
+```bash
+cargo run --target x86_64-unknown-linux-gnu --bin render -- \
+  --suite all --sample-rate 96000 --duration 1.5 --excitation-frame 16 --excitation-amplitude 0.7
+```
+
+### Render All Presets
+
+```bash
+# Render every factory preset with filename-aligned WAV output + manifest
+cargo run --target x86_64-unknown-linux-gnu --bin render_presets
+
+# Render a focused subset while debugging
+cargo run --target x86_64-unknown-linux-gnu --bin render_presets -- \
+  --contains scrape --limit 5 --note 64 --velocity 100 --duration 1.0
+```
+
+Writes WAVs to `output/` by default and a metrics report at `output/preset_render_manifest.txt`.
 
 Validate a generated WAV:
 ```bash
@@ -405,11 +431,11 @@ This module does file I/O and allocation (not real-time safe).
 
 ### `src/bin/render.rs`
 
-Command-line offline renderer. Renders damage variations to `output/damage-variations/`.
+Command-line offline debug renderer. Supports `family`, `rust`, `damage`, or `all` suites and configurable sample-rate, duration, and excitation timing.
 
-### `src/bin/preset_render.rs`
+### `src/bin/render_presets.rs`
 
-Preset rendering utility. Renders a single preset to WAV for preset validation and evidence generation.
+Preset batch renderer. Renders all matching presets to WAV, prints per-preset metrics, and writes `preset_render_manifest.txt` for diffable debugging.
 
 ### `scripts/check_wav.py`
 

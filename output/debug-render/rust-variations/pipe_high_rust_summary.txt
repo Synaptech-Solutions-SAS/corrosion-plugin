@@ -1,0 +1,16 @@
+profile=pipe
+variant=high_rust
+rust_amount=0.850
+wav_path=output/debug-render/rust-variations/pipe_high_rust.wav
+summary_path=output/debug-render/rust-variations/pipe_high_rust_summary.txt
+Corrosion offline renderer scaffold
+sample_rate=48000
+frame_count=2400
+peak=0.534851611
+rms=0.332199752
+checksum=4137423782381208394
+first_samples=[0.037429653, 0.074612245, 0.111306280, 0.147277400, 0.182301760, 0.216169149, 0.248685911, 0.279677391, 0.308990300, 0.336494267, 0.362083197, 0.385676086, 0.407217443, 0.426677018, 0.444049567, 0.459353358]
+zero_crossings=22
+brightness_proxy=0.032239072
+late_to_early_energy_ratio=3.075030088
+roughness_proxy=1.424036264

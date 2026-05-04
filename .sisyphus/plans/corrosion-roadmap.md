@@ -2,20 +2,22 @@
 
 ## TL;DR
 
-> **Quick Summary**: Take Corrosion from its current state (Gate 0 ~83% done — offline DSP prototype with pipe/plate/tank profiles, size/rust/damage transforms, evidence renders) all the way to a public 1.0 VST3/CLAP industrial physical-modeling instrument with sequencer, custom GUI, 100+ presets, and full documentation.
+> **Quick Summary**: Take Corrosion from its current state (Gate 0 ~83% done — offline DSP prototype with pipe/plate/tank profiles, size/rust/damage transforms, evidence renders) through a series of milestone gates toward a public-ready VST3/CLAP industrial physical-modeling instrument.
+>
+> **Important**: The 6 gates are major milestone checkpoints, not a direct path to v1.0. Each gate validates a significant feature set, but substantial additional work (polish, optimization, platform support, expanded content, etc.) will be required after Gate 6 before reaching a v1.0 release.
 >
 > **Deliverables**:
 > - Closed Gate 0 with evidence summary and frozen initial parameter ranges.
-> - Gate 1: NIH-plug VST3+CLAP shell, 8-voice polyphony, hit exciter routing to pipe/plate/tank objects (OPEN / BLOCKED on REAPER host smoke test).
+> - Gate 1: NIH-plug VST3+CLAP shell, 8-voice polyphony, hit exciter routing to pipe/plate/tank objects.
 > - Gate 2 / v0.1.0: 8-voice polyphony, all 3 objects, 6 MVP params, 20+ presets, pluginval-clean.
 > - Gate 3 / v0.2.0: scrape exciter, chain object, stereo spread, body resonator, 40+ presets.
 > - Gate 4 / v0.3.0: custom GUI, 4 macros, randomizer, preset browser.
-> - Gate 5: 16/32-step sequencer with per-step locks, host sync.
-> - Gate 6 / v1.0.0: 100+ presets, full docs, release bundles, installer.
+> - Gate 5 / v0.4.0+: 16/32-step sequencer with per-step locks, host sync.
+> - Gate 6 / v0.9.0+: 100+ presets, full docs, release bundles — core feature complete, ready for extensive polish and testing.
 >
 > **Estimated Effort**: XL (multi-month roadmap; each gate is itself a major milestone)
 > **Parallel Execution**: YES — 1 setup wave + 7 sequential gate-waves + 1 final review wave, with high in-wave parallelism (5-8 tasks/wave) within each gate.
-> **Critical Path**: G-Setup → G0-3 → G1-1 (NIH-plug scaffold) → G1-7 (first audible plugin) → G2-1 (voice mgr) → G2-13 (preset bank) → G3-1 (scrape) → G4-1 (custom GUI) → G5-1 (seq core) → G6-7 (release bundle) → F1-F4 → user okay.
+> **Critical Path**: G-Setup → G0-3 → G1-1 (NIH-plug scaffold) → G1-7 (first audible plugin) → G2-1 (voice mgr) → G2-13 (preset bank) → G3-1 (scrape) → G4-1 (custom GUI) → G5-1 (seq core) → G6-7 (release bundle) → extensive polish → F1-F4 → user okay.
 
 ---
 
@@ -121,7 +123,7 @@ The following must stay aligned:
 If one changes, the others must be updated in the same task or listed explicitly as follow-up work.
 
 ### Core Objective
-Take Corrosion from its current Gate 0 prototype state to a release-ready 1.0.0 VST3+CLAP industrial physical-modeling instrument that meets every PRD pass criterion across all 6 gates without compromising real-time safety or product identity.
+Take Corrosion from its current Gate 0 prototype state through 6 milestone gates, building toward a release-ready VST3+CLAP industrial physical-modeling instrument. Each gate validates major feature sets; substantial polish and refinement will follow Gate 6 before a v1.0 release.
 
 ### Concrete Deliverables
 - `.sisyphus/evidence/gate-0-summary.md` through `gate-6-summary.md` (one per gate).
@@ -133,7 +135,7 @@ Take Corrosion from its current Gate 0 prototype state to a release-ready 1.0.0 
 - Documentation: `docs/user-manual.md`, `docs/developer.md`, `docs/sound-design-guide.md`, `README.md`, `CHANGELOG.md`, `INSTALL.md`.
 - Pluginval reports (VST3): `.sisyphus/evidence/pluginval-gate-{N}-*-vst3.log`.
 - Clap-validator reports (CLAP): `.sisyphus/evidence/clap-validator-gate-{N}-*.log`.
-- Release bundle: `release/corrosion-1.0.0/` containing both formats, docs, install script.
+- Release bundle: `release/corrosion-VERSION/` containing both formats, docs, install script (version TBD post-Gate 6).
 
 ### Definition of Done
 - [ ] `cargo test --workspace` → PASS (existing + new module tests).
@@ -2161,7 +2163,7 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
 ---
 
-### Wave 7 — Gate 6 Version 1.0 Release
+### Wave 7 — Gate 6 Release Preparation
 
 > **Mandatory reference set for Gate 6**: before release closeout, the user-facing docs (`docs/user-manual.md`, `docs/developer.md`, `docs/sound-design-guide.md`) must explicitly cross-reference `docs/full-feature-surface.md`, `docs/sound-direction-brief.md`, and the relevant portions of `docs/new-detailed-specs/*.md` so the release documentation and shipped implementation cannot drift apart.
 
@@ -2300,12 +2302,12 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
 
 - [ ] G6-7. VST3 + CLAP release-bundle build + installer script
 
-  **What to do**: `release/build.sh` produces `release/corrosion-1.0.0/` containing per-platform subdirs:
-  - `release/corrosion-1.0.0/linux/` — Linux VST3 + CLAP + `install.sh`.
-  - `release/corrosion-1.0.0/windows/` — Windows VST3 + CLAP + `install.ps1` (the FL Studio user's primary artifacts).
-  - `release/corrosion-1.0.0/presets/` — factory preset bank (≥100 files).
-  - `release/corrosion-1.0.0/docs/` — user manual, sound design guide, CHANGELOG, INSTALL, README.
-  Build script also produces two release archives: `release/corrosion-1.0.0-linux.tar.gz` and `release/corrosion-1.0.0-windows.zip`.
+  **What to do**: `release/build.sh` produces `release/corrosion-VERSION/` containing per-platform subdirs:
+  - `release/corrosion-VERSION/linux/` — Linux VST3 + CLAP + `install.sh`.
+  - `release/corrosion-VERSION/windows/` — Windows VST3 + CLAP + `install.ps1` (the FL Studio user's primary artifacts).
+  - `release/corrosion-VERSION/presets/` — factory preset bank (≥100 files).
+  - `release/corrosion-VERSION/docs/` — user manual, sound design guide, CHANGELOG, INSTALL, README.
+  Build script also produces two release archives: `release/corrosion-VERSION-linux.tar.gz` and `release/corrosion-VERSION-windows.zip`.
 
   **Must NOT do**: Do not omit Windows artifacts. Do not codesign Linux artifacts (out of scope). Do not embed an FL Studio plugin database — users install via FL Studio's "Plugin Manager" themselves (documented in user manual).
 
@@ -2317,19 +2319,19 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
     Tool: Bash
     Steps:
       1. ./release/build.sh
-      2. test -d release/corrosion-1.0.0/linux/ && test -d release/corrosion-1.0.0/windows/
+      2. test -d release/corrosion-VERSION/linux/ && test -d release/corrosion-VERSION/windows/
       3. for plat in linux windows; do
            for f in Corrosion.vst3 Corrosion.clap; do
-             find release/corrosion-1.0.0/${plat}/ -name "$f" | grep -q . || exit 1
+             find release/corrosion-VERSION/${plat}/ -name "$f" | grep -q . || exit 1
            done
          done
-      4. test -f release/corrosion-1.0.0/linux/install.sh && test -f release/corrosion-1.0.0/windows/install.ps1
+      4. test -f release/corrosion-VERSION/linux/install.sh && test -f release/corrosion-VERSION/windows/install.ps1
       5. for f in README.md CHANGELOG.md INSTALL.md; do
-           find release/corrosion-1.0.0/docs/ -name "$f" | grep -q . || exit 1
+           find release/corrosion-VERSION/docs/ -name "$f" | grep -q . || exit 1
          done
-      6. test "$(ls release/corrosion-1.0.0/presets/*.corrosion-preset 2>/dev/null | wc -l)" -ge 100
-      7. test -f release/corrosion-1.0.0-linux.tar.gz
-      8. test -f release/corrosion-1.0.0-windows.zip
+      6. test "$(ls release/corrosion-VERSION/presets/*.corrosion-preset 2>/dev/null | wc -l)" -ge 100
+      7. test -f release/corrosion-VERSION-linux.tar.gz
+      8. test -f release/corrosion-VERSION-windows.zip
     Expected: complete cross-platform bundle.
     Evidence: .sisyphus/evidence/task-G6-7-bundle.log
   ```
@@ -2429,10 +2431,10 @@ If a referenced directory does not exist yet at a given gate (e.g., `src/sequenc
   Scenario: Pluginval strictness 10 clean across Linux and Windows release artifacts
     Tool: Bash
     Steps:
-       1. pluginval --strictness-level 10 --validate release/corrosion-1.0.0/linux/Corrosion.vst3 | tee .sisyphus/evidence/pluginval-gate-6-linux-vst3.log
-       2. clap-validator validate release/corrosion-1.0.0/linux/Corrosion.clap/Corrosion.clap --only-failed | tee .sisyphus/evidence/clap-validator-gate-6-linux.log
-       3. wine pluginval.exe --strictness-level 10 --validate release/corrosion-1.0.0/windows/Corrosion.vst3 | tee .sisyphus/evidence/pluginval-gate-6-win-vst3.log
-       4. wine clap-validator.exe validate release/corrosion-1.0.0/windows/Corrosion.clap/Corrosion.clap --only-failed | tee .sisyphus/evidence/clap-validator-gate-6-win.log
+       1. pluginval --strictness-level 10 --validate release/corrosion-VERSION/linux/Corrosion.vst3 | tee .sisyphus/evidence/pluginval-gate-6-linux-vst3.log
+       2. clap-validator validate release/corrosion-VERSION/linux/Corrosion.clap/Corrosion.clap --only-failed | tee .sisyphus/evidence/clap-validator-gate-6-linux.log
+       3. wine pluginval.exe --strictness-level 10 --validate release/corrosion-VERSION/windows/Corrosion.vst3 | tee .sisyphus/evidence/pluginval-gate-6-win-vst3.log
+       4. wine clap-validator.exe validate release/corrosion-VERSION/windows/Corrosion.clap/Corrosion.clap --only-failed | tee .sisyphus/evidence/clap-validator-gate-6-win.log
        5. grep -q 'ALL TESTS PASSED' .sisyphus/evidence/pluginval-gate-6-linux-vst3.log || exit 1
        6. grep -qE '(passed|failed|skipped)' .sisyphus/evidence/clap-validator-gate-6-linux.log || exit 1
      Expected: VST3 pluginval passes; CLAP clap-validator reports 0 failed tests.
@@ -2596,6 +2598,6 @@ ls .sisyphus/evidence/gate-{0,1,2,3,4,5,6}-summary.md                           
 - [ ] Pluginval strictness 10 passes for VST3; clap-validator reports 0 failed tests for CLAP.
 - [ ] 100+ factory presets covering all required families.
 - [ ] User manual, developer doc, sound design guide all present.
-- [ ] Release bundle assembled at `release/corrosion-1.0.0/`.
+- [ ] Release bundle assembled at `release/corrosion-VERSION/`.
 - [x] F1-F4 all APPROVE.
 - [ ] User has explicitly oked the final verification.

@@ -1,0 +1,2 @@
+profile=pipe variant=low_rust rust=0.25 wav_path=output/debug-render/rust-variations/pipe_low_rust.wav summary_path=output/debug-render/rust-variations/pipe_low_rust_summary.txt checksum=12756990422044370828 peak=0.697537363 rms=0.392829239
+profile=pipe variant=high_rust rust=0.85 wav_path=output/debug-render/rust-variations/pipe_high_rust.wav summary_path=output/debug-render/rust-variations/pipe_high_rust_summary.txt checksum=4137423782381208394 peak=0.534851611 rms=0.332199752

@@ -6,15 +6,18 @@ This document turns the product spec into an execution plan where each roadmap m
 > **Note**: As of Gate 3 (v0.2.0), this document describes both implemented features and future roadmap targets. Modules like `src/gui/`, `src/sequencer/`, `src/macros/`, and `src/randomizer/` are planned for Gates 4–6 and do not yet exist in the codebase. Refer to `docs/EXECUTION_TRACKER.md` for current gate status.
 
 ## Gate Sequence
-| Gate | Roadmap Milestone | Release Mapping | Primary Outcome |
+
+> **Important**: The 6 gates are milestone checkpoints, not a direct path to v1.0. Each gate validates a major feature set, but significant additional work (polish, optimization, expanded content, platform support, etc.) will be required before a v1.0 release.
+
+| Gate | Roadmap Milestone | Release Tag | Primary Outcome |
 |---|---|---|---|
 | Gate 0 | Research Prototype | Pre-release | Prove the sound engine concept offline |
 | Gate 1 | Minimal Plugin | Pre-release | First playable VST3/CLAP instrument |
 | Gate 2 | MVP Synth | 0.1.0 | First complete product concept |
-| Gate 3 | Industrial Character | 0.2.0 core | Distinctive industrial sound expansion |
-| Gate 4 | Product UX | 0.3.0-style update | Usable, inspiring product workflow |
-| Gate 5 | Sequenced Instrument | Pre-1.0 feature complete | Industrial pattern instrument workflow |
-| Gate 6 | Version 1.0 Release | 1.0.0 | Public-ready release package |
+| Gate 3 | Industrial Character | 0.2.0 | Distinctive industrial sound expansion |
+| Gate 4 | Product UX | 0.3.0 | Usable, inspiring product workflow |
+| Gate 5 | Sequenced Instrument | 0.4.0+ | Industrial pattern instrument workflow |
+| Gate 6 | Release Preparation | 0.9.0+ | Core feature complete, ready for pre-release polish |
 
 ## Planning Rules
 - A gate is failed unless all listed pass criteria and evidence are satisfied.

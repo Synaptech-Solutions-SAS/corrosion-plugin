@@ -1,0 +1,10 @@
+family=plate
+wav_path=output/debug-render/family-comparisons/plate_comparison.wav
+summary_path=output/debug-render/family-comparisons/plate_comparison_summary.txt
+Corrosion offline renderer scaffold
+sample_rate=48000
+frame_count=2400
+peak=0.449579120
+rms=0.211773753
+checksum=6767901323557673098
+first_samples=[0.056000002, 0.110147774, 0.160745740, 0.206381008, 0.246028900, 0.279115975, 0.305536270, 0.325620860, 0.340066075, 0.349829763, 0.356009424, 0.359716326, 0.361960530, 0.363559783, 0.365080416, 0.366815448]

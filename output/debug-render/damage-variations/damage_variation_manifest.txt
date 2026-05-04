@@ -1,0 +1,2 @@
+profile=pipe variant=low_damage damage=0.25 wav_path=output/debug-render/damage-variations/pipe_low_damage.wav summary_path=output/debug-render/damage-variations/pipe_low_damage_summary.txt checksum=7477446504709811081 peak=0.771308303 rms=0.440831065
+profile=pipe variant=high_damage damage=0.85 wav_path=output/debug-render/damage-variations/pipe_high_damage.wav summary_path=output/debug-render/damage-variations/pipe_high_damage_summary.txt checksum=15336914520420714210 peak=0.880840361 rms=0.480760247

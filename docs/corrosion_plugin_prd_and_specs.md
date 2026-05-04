@@ -1604,11 +1604,15 @@ For each release:
 Use semantic versioning:
 
 ```text
-0.1.0 — first MVP
-0.2.0 — scrape/chain/body update
-0.3.0 — GUI/randomizer update
-1.0.0 — public release
+0.1.0 — first MVP (Gate 2)
+0.2.0 — scrape/chain/body update (Gate 3)
+0.3.0 — GUI/randomizer update (Gate 4)
+0.4.0+ — sequencer (Gate 5)
+0.9.0+ — core feature complete (Gate 6)
+1.0.0 — public release (requires extensive polish/testing post-Gate 6)
 ```
+
+**Note**: The 6 gates are milestone checkpoints. Gate 6 marks "core feature complete," but significant additional work (polish, optimization, platform support, expanded testing, etc.) will be required before a v1.0 public release.
 
 ---
 
