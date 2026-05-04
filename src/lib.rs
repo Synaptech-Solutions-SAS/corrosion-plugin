@@ -1,6 +1,9 @@
 pub mod dsp;
+pub mod gui;
+pub mod macros;
 pub mod offline;
 pub mod presets;
+pub mod randomizer;
 pub mod voice;
 mod params;
 
@@ -8,8 +11,6 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use nih_plug::prelude::*;
-#[cfg(feature = "gui")]
-use nih_plug_egui::{create_egui_editor, egui, widgets};
 use voice::VoiceManager;
 
 pub use params::{CorrosionParams, Object};
@@ -22,6 +23,54 @@ pub fn apply_output_limiter(sample: f32) -> f32 {
     sample.clamp(-LIMITER_THRESHOLD, LIMITER_THRESHOLD)
 }
 
+#[inline]
+pub fn apply_drive(sample: f32, drive: f32) -> f32 {
+    if drive <= 0.0 {
+        return sample;
+    }
+    
+    let drive_gain = 1.0 + drive * 4.0;
+    let amplified = sample * drive_gain;
+    
+    let abs_sample = amplified.abs();
+    let sign = amplified.signum();
+    
+    let shaped = if sign > 0.0 {
+        let soft_threshold = 0.3;
+        let hard_threshold = 0.8;
+        
+        if abs_sample < soft_threshold {
+            amplified
+        } else if abs_sample < hard_threshold {
+            let t = (abs_sample - soft_threshold) / (hard_threshold - soft_threshold);
+            let eased = soft_threshold + (hard_threshold - soft_threshold) * (t * t * (3.0 - 2.0 * t));
+            sign * eased
+        } else {
+            let t = (abs_sample - hard_threshold) / (1.0 + drive_gain);
+            let compressed = hard_threshold + (1.0 - hard_threshold) * (1.0 - (-t).exp());
+            sign * compressed.min(1.2)
+        }
+    } else {
+        let soft_threshold = 0.25;
+        let hard_threshold = 0.7;
+        
+        if abs_sample < soft_threshold {
+            amplified
+        } else if abs_sample < hard_threshold {
+            let t = (abs_sample - soft_threshold) / (hard_threshold - soft_threshold);
+            let eased = soft_threshold + (hard_threshold - soft_threshold) * (t * t * (3.0 - 2.0 * t));
+            sign * eased
+        } else {
+            let t = (abs_sample - hard_threshold) / (1.0 + drive_gain);
+            let compressed = hard_threshold + (1.0 - hard_threshold) * (1.0 - (-t).exp());
+            sign * compressed.min(1.1)
+        }
+    };
+    
+    let dry_wet = shaped * drive + sample * (1.0 - drive * 0.5);
+    dry_wet.clamp(-1.5, 1.5)
+}
+
 fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
     match event {
         NoteEvent::NoteOn { note, velocity, .. } => {
@@ -29,13 +78,15 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
                 Object::Pipe => dsp::ModalProfileId::Pipe,
                 Object::Plate => dsp::ModalProfileId::Plate,
                 Object::Tank => dsp::ModalProfileId::Tank,
+                Object::Chain => dsp::ModalProfileId::Chain,
             };
             let size = plugin.params.size.value();
             let rust = plugin.params.rust.value();
             let damage = plugin.params.damage.value();
+            let exciter_type = plugin.params.exciter.value();
             plugin
                 .voice_manager
-                .note_on(note, velocity as f32, profile, size, rust, damage);
+                .note_on(note, velocity as f32, profile, size, rust, damage, exciter_type);
         }
         NoteEvent::NoteOff { note, .. } => {
             plugin.voice_manager.note_off(note);
@@ -69,6 +120,7 @@ pub fn corrosion_version() -> &'static str {
 pub struct Corrosion {
     params: Arc<CorrosionParams>,
     voice_manager: VoiceManager,
+    body_resonator: dsp::BodyResonator,
 }
 
 impl Default for Corrosion {
@@ -76,6 +128,7 @@ impl Default for Corrosion {
         Self {
             params: Arc::new(CorrosionParams::default()),
             voice_manager: VoiceManager::new(),
+            body_resonator: dsp::BodyResonator::new(),
         }
     }
 }
@@ -127,6 +180,7 @@ impl Plugin for Corrosion {
 
     fn reset(&mut self) {
         self.voice_manager = VoiceManager::new();
+        self.body_resonator = dsp::BodyResonator::new();
     }
 
     fn process(
@@ -143,14 +197,34 @@ impl Plugin for Corrosion {
 
             let drive = self.params.drive.value();
             let output_gain = self.params.output.value();
-            let mut sample = self.voice_manager.process_sample(sample_rate);
-            sample = (sample * (1.0 + drive * 3.0)).tanh();
-            sample *= output_gain;
-            sample = apply_output_limiter(sample);
+            let width = self.params.width.value();
+            let body_amount = self.params.body.value();
+            
+            let (left_sample, right_sample) = self.voice_manager.process_sample_stereo(sample_rate, width);
+            
+            let mut left = left_sample;
+            let mut right = right_sample;
+            
+            left = apply_drive(left, drive);
+            right = apply_drive(right, drive);
+            
+            let mono_for_body = (left + right) * 0.5;
+            let body_out = self.body_resonator.process_sample(mono_for_body, sample_rate, body_amount);
+            let body_diff = body_out - mono_for_body;
+            left += body_diff;
+            right += body_diff;
+            
+            left *= output_gain;
+            right *= output_gain;
+            left = apply_output_limiter(left);
+            right = apply_output_limiter(right);
+            
             let mut idx = 0;
             for channel_sample in channel_samples.into_iter() {
-                if idx < 2 {
-                    *channel_sample = sample;
+                if idx == 0 {
+                    *channel_sample = left;
+                } else if idx == 1 {
+                    *channel_sample = right;
                 }
                 idx += 1;
             }
@@ -162,46 +236,7 @@ impl Plugin for Corrosion {
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         #[cfg(feature = "gui")]
         {
-            let params = self.params.clone();
-            create_egui_editor(
-                self.params.editor_state.clone(),
-                (),
-                |_, _| {},
-                move |egui_ctx, setter, _state| {
-                    egui::CentralPanel::default().show(egui_ctx, |ui| {
-                        ui.heading("Corrosion");
-                        ui.separator();
-
-                        ui.label("Object");
-                        ui.add(widgets::ParamSlider::for_param(&params.object, setter));
-
-                        ui.add_space(8.0);
-
-                        ui.label("Size");
-                        ui.add(widgets::ParamSlider::for_param(&params.size, setter));
-
-                        ui.add_space(8.0);
-
-                        ui.label("Rust");
-                        ui.add(widgets::ParamSlider::for_param(&params.rust, setter));
-
-                        ui.add_space(8.0);
-
-                        ui.label("Damage");
-                        ui.add(widgets::ParamSlider::for_param(&params.damage, setter));
-
-                        ui.add_space(8.0);
-
-                        ui.label("Drive");
-                        ui.add(widgets::ParamSlider::for_param(&params.drive, setter));
-
-                        ui.add_space(8.0);
-
-                        ui.label("Output");
-                        ui.add(widgets::ParamSlider::for_param(&params.output, setter));
-                    });
-                },
-            )
+            gui::create_editor(self.params.clone(), self.params.editor_state.clone())
         }
         #[cfg(not(feature = "gui"))]
         {

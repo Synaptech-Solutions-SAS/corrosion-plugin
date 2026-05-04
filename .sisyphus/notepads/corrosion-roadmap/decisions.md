@@ -26,3 +26,8 @@
 - If the roadmap and the detailed specs disagree about timing/scope, the roadmap wins; if they disagree about mathematical behavior or named model identity, the detailed specs win.
 - From Gate 3 onward, every DSP-facing task must cite the exact spec file(s) it implements and must preserve the named algorithm family unless a staged approximation is documented explicitly in evidence.
 - `docs/full-feature-surface.md` and `docs/sound-direction-brief.md` are now treated as the bridge between roadmap sequencing and detailed-spec implementation, and must stay aligned with both.
+
+## 2026-05-03 - Chain Object Wiring Decision
+
+- Add Chain as a fourth user-facing object option (`Object::Chain`) and map it directly to `ModalProfileId::Chain` everywhere the object enum is translated to DSP profiles, presets, or preset-render tooling.
+- Keep Chain as a true modal profile with a static mode table; do not introduce dynamic coupling yet, even though the detailed spec describes it, because this task only closes the static bank wiring.

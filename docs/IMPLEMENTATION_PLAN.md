@@ -3,6 +3,8 @@
 ## Purpose
 This document turns the product spec into an execution plan where each roadmap milestone is a delivery gate. Work only advances when the current gate meets its implementation scope, verification requirements, and exit evidence, so the project stays aligned with the core identity: physically modeled industrial objects under stress.
 
+> **Note**: As of Gate 3 (v0.2.0), this document describes both implemented features and future roadmap targets. Modules like `src/gui/`, `src/sequencer/`, `src/macros/`, and `src/randomizer/` are planned for Gates 4–6 and do not yet exist in the codebase. Refer to `docs/EXECUTION_TRACKER.md` for current gate status.
+
 ## Gate Sequence
 | Gate | Roadmap Milestone | Release Mapping | Primary Outcome |
 |---|---|---|---|

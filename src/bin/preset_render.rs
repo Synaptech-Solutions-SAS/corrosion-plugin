@@ -69,6 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Object::Pipe => corrotion::dsp::ModalProfileId::Pipe,
         Object::Plate => corrotion::dsp::ModalProfileId::Plate,
         Object::Tank => corrotion::dsp::ModalProfileId::Tank,
+        Object::Chain => corrotion::dsp::ModalProfileId::Chain,
     };
 
     voice.note_on(
@@ -79,6 +80,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         preset.size,
         preset.rust,
         preset.damage,
+        0,
     );
 
     let mut output = Vec::with_capacity(frame_count);

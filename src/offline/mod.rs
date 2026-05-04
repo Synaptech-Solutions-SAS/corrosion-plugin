@@ -2,7 +2,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::dsp::{DamageAmount, ModalProfileId, PlaceholderResonator, RustAmount, SizeScale};
+use crate::dsp::{DamageAmount, ModalProfileId, ModalResonator, RustAmount, SizeScale};
 
 #[derive(Clone, Copy, Debug)]
 pub struct RenderConfig {
@@ -466,7 +466,7 @@ impl OfflineRenderer {
 
         for spec in FAMILY_COMPARISON_SPECS {
             let (output, summary) =
-                self.render(PlaceholderResonator::with_profile(spec.profile_id));
+                self.render(ModalResonator::with_profile(spec.profile_id));
             let wav_path = output_dir.join(format!("{}_comparison.wav", spec.slug));
             let summary_path = output_dir.join(format!("{}_comparison_summary.txt", spec.slug));
 
@@ -516,7 +516,7 @@ impl OfflineRenderer {
         let mut artifacts = Vec::with_capacity(RUST_VARIATION_SPECS.len());
 
         for spec in RUST_VARIATION_SPECS {
-            let (output, summary) = self.render(PlaceholderResonator::with_profile_size_and_rust(
+            let (output, summary) = self.render(ModalResonator::with_profile_size_and_rust(
                 spec.profile_id,
                 SizeScale::default(),
                 RustAmount::new(spec.rust_amount),
@@ -581,7 +581,7 @@ impl OfflineRenderer {
 
         for spec in DAMAGE_VARIATION_SPECS {
             let (output, summary) =
-                self.render(PlaceholderResonator::with_profile_size_rust_and_damage(
+                self.render(ModalResonator::with_profile_size_rust_and_damage(
                     spec.profile_id,
                     SizeScale::default(),
                     RustAmount::default(),

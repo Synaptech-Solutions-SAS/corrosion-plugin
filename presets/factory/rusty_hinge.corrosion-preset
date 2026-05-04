@@ -1,0 +1,13 @@
+{
+  "name": "Rusty Hinge",
+  "version": "1",
+  "object": "Chain",
+  "exciter": 0,
+  "size": 0.6,
+  "rust": 0.8,
+  "damage": 0.5,
+  "drive": 0.2,
+  "output": 1.4,
+  "width": 0.5,
+  "body": 0.2
+}

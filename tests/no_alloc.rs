@@ -12,7 +12,7 @@ fn process_callback_is_alloc_free() {
     // Trigger 8 voices before entering the no-alloc zone.
     // The process callback itself is what must stay allocation-free.
     for i in 0..MAX_VOICES {
-        manager.note_on(60 + i as u8, 100.0, ModalProfileId::Pipe, 1.0, 0.0, 0.0);
+        manager.note_on(60 + i as u8, 100.0, ModalProfileId::Pipe, 1.0, 0.0, 0.0, 0);
     }
 
     assert_no_alloc(|| {

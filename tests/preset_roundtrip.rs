@@ -17,11 +17,14 @@ fn preset_roundtrip_save_and_load() {
         name: "Iron Strike".to_string(),
         version: PRESET_VERSION.to_string(),
         object: Object::Pipe,
+        exciter: 0,
         size: 1.0,
         rust: 0.3,
         damage: 0.1,
         drive: 0.5,
         output: 1.0,
+        width: 0.5,
+        body: 0.2,
     };
 
     let path = unique_temp_path("roundtrip");

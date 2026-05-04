@@ -143,3 +143,11 @@ Target directory redirected to `../corrotion-target` to avoid polluting repo.
 - The roadmap should control sequencing and gate scope, while the detailed spec pack should control algorithm identity, signal-chain placement, control vocabulary, and interaction semantics.
 - The build process for all future DSP tasks should explicitly read: roadmap task -> relevant detailed spec file(s) -> surface docs (`docs/full-feature-surface.md`, `docs/sound-direction-brief.md`) before implementation starts.
 - Any staged simplification of a detailed-spec algorithm must be written down in task evidence immediately; otherwise later sessions will assume the full spec already landed.
+
+## 2026-05-03 - G3-3 Chain Modal Profile Tuning
+
+- The Chain roughness metric responded better to clustered low-mid doublets than to a sparse high-frequency table; the final winning profile used 10 modes arranged in five close pairs with uneven gaps between them.
+- `tests/chain_distinct.rs` is a useful regression because it measures the new profile against Pipe, Plate, and Tank using the existing `roughness_proxy` helper instead of inventing a new metric.
+- Native `cargo test` in this environment needed the `x86_64-unknown-linux-gnu` target; the default musl target still hits the repo’s pkg-config cross-compilation limitation for `x11`.
+# 2026-05-03
+- When adding new `FloatParam`s in `src/params.rs`, keep the struct field order aligned with the `Default` initializer and use `FloatRange::Linear { min: 0.0, max: 1.0 }` for normalized controls like Width and Body.

@@ -6,6 +6,8 @@
 - Nested checkboxes are execution items; top-level checkboxes are approval boundaries.
 - If a gate fails review, open follow-up tasks under that gate instead of advancing.
 
+> **Note**: As of Gate 3 (v0.2.0), Gates 0–3 are complete. Gates 4–6 describe planned work. Some documented modules (e.g., `src/gui/`, `src/sequencer/`, `src/macros/`) do not yet exist in the codebase.
+
 ## Gate Sequence
 - Gate 0 — Research Prototype
 - Gate 1 — Minimal Plugin

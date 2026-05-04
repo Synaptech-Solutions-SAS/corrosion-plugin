@@ -1,0 +1,13 @@
+{
+  "name": "Void Resonance",
+  "version": "1",
+  "object": "Tank",
+  "exciter": 0,
+  "size": 1.7,
+  "rust": 0.2,
+  "damage": 0.1,
+  "drive": 0.0,
+  "output": 1.1,
+  "width": 0.4,
+  "body": 0.7
+}

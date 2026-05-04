@@ -32,10 +32,11 @@ impl VoiceManager {
         size: f32,
         rust: f32,
         damage: f32,
+        exciter_type: i32,
     ) {
         // First try: find an inactive voice
         if let Some(idx) = self.voices.iter().position(|v| !v.is_active()) {
-            self.voices[idx].note_on(note, velocity, profile_id, self.frame_counter, size, rust, damage);
+            self.voices[idx].note_on(note, velocity, profile_id, self.frame_counter, size, rust, damage, exciter_type);
             return;
         }
 
@@ -58,7 +59,7 @@ impl VoiceManager {
             .map(|(idx, _)| idx);
 
         if let Some(idx) = steal_idx {
-            self.voices[idx].note_on(note, velocity, profile_id, self.frame_counter, size, rust, damage);
+            self.voices[idx].note_on(note, velocity, profile_id, self.frame_counter, size, rust, damage, exciter_type);
         }
     }
 
@@ -75,6 +76,19 @@ impl VoiceManager {
             sum += voice.process_sample(sample_rate);
         }
         sum / MAX_VOICES as f32
+    }
+
+    pub fn process_sample_stereo(&mut self, sample_rate: u32, width: f32) -> (f32, f32) {
+        self.frame_counter += 1;
+        let mut left_sum = 0.0f32;
+        let mut right_sum = 0.0f32;
+        for voice in &mut self.voices {
+            let (left, right) = voice.process_sample_stereo(sample_rate, width);
+            left_sum += left;
+            right_sum += right;
+        }
+        let scale = 1.0 / MAX_VOICES as f32;
+        (left_sum * scale, right_sum * scale)
     }
 }
 
@@ -93,7 +107,7 @@ mod tests {
         let mut manager = VoiceManager::new();
         let notes = [48u8, 51, 55, 59, 62, 65, 69, 72];
         for &note in &notes {
-            manager.note_on(note, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0);
+            manager.note_on(note, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 0);
         }
 
         let sample_rate = 48_000u32;
@@ -113,9 +127,9 @@ mod tests {
     fn ninth_note_does_not_crash() {
         let mut manager = VoiceManager::new();
         for note in 0..12u8 {
-            manager.note_on(48 + note, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0);
+            manager.note_on(48 + note, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 0);
         }
-        manager.note_on(72, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0);
+        manager.note_on(72, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 0);
         let sample_rate = 48_000u32;
         let sample = manager.process_sample(sample_rate);
         assert!(sample.is_finite());
@@ -124,8 +138,8 @@ mod tests {
     #[test]
     fn note_off_deactivates_correct_voice() {
         let mut manager = VoiceManager::new();
-        manager.note_on(60, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0);
-        manager.note_on(64, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0);
+        manager.note_on(60, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 0);
+        manager.note_on(64, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 0);
         manager.note_off(60);
 
         let active_count = manager.voices.iter().filter(|v| v.is_active()).count();
@@ -137,7 +151,7 @@ mod tests {
         let mut manager = VoiceManager::new();
         // Fill all 8 slots
         for note in 0..MAX_VOICES as u8 {
-            manager.note_on(48 + note, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0);
+            manager.note_on(48 + note, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 0);
         }
         // Render enough frames for most voices to decay below their initial peak
         let sample_rate = 48_000u32;
@@ -149,7 +163,7 @@ mod tests {
             manager.voices.iter().filter(|v| v.is_active()).map(|v| v.note()).collect();
 
         // Send a 9th note — should steal the quietest (most decayed) voice
-        manager.note_on(80, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0);
+        manager.note_on(80, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 0);
 
         // The new note should be present in the active voices
         let has_new_note = manager.voices.iter().any(|v| v.is_active() && v.note() == 80);

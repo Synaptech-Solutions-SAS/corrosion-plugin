@@ -2,9 +2,12 @@
   "name": "Quick Hit",
   "version": "1",
   "object": "Pipe",
+  "exciter": 0,
   "size": 0.45,
   "rust": 0.85,
   "damage": 0.35,
   "drive": 0.3,
-  "output": 1.35
+  "output": 1.35,
+  "width": 0.5,
+  "body": 0.0
 }

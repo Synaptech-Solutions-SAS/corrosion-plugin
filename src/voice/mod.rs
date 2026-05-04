@@ -1,4 +1,4 @@
-use crate::dsp::{DamageAmount, ModalProfileId, PlaceholderResonator, ResonatorCore, RustAmount, SizeScale};
+use crate::dsp::{DamageAmount, ModalProfileId, ModalResonator, ResonatorCore, RustAmount, ScrapeExciter, SizeScale};
 
 pub mod manager;
 
@@ -12,8 +12,10 @@ pub struct Voice {
     active: bool,
     note: u8,
     velocity: f32,
+    exciter_type: i32,
     excitation_sent: bool,
-    resonator: PlaceholderResonator,
+    resonator: ModalResonator,
+    scrape_exciter: ScrapeExciter,
     peak_hold: f32,
     frames_below_threshold: u32,
     start_frame: u64,
@@ -21,6 +23,8 @@ pub struct Voice {
     excitation_state: f32,
     excitation_decay: f32,
     highpass_state: f32,
+    damage_amount: f32,
+    rattle_phase: f32,
 }
 
 const TAIL_ENERGY_THRESHOLD: f32 = 1e-4;
@@ -33,8 +37,10 @@ impl Voice {
             active: false,
             note: 60,
             velocity: 0.0,
+            exciter_type: 0,
             excitation_sent: false,
-            resonator: PlaceholderResonator::with_profile(ModalProfileId::Pipe),
+            resonator: ModalResonator::with_profile(ModalProfileId::Pipe),
+            scrape_exciter: ScrapeExciter::new(),
             peak_hold: 0.0,
             frames_below_threshold: 0,
             start_frame: 0,
@@ -42,6 +48,8 @@ impl Voice {
             excitation_state: 0.0,
             excitation_decay: 0.5,
             highpass_state: 0.0,
+            damage_amount: 0.0,
+            rattle_phase: 0.0,
         }
     }
 
@@ -54,22 +62,29 @@ impl Voice {
         size: f32,
         rust: f32,
         damage: f32,
+        exciter_type: i32,
     ) {
         self.active = true;
         self.note = note;
         self.velocity = velocity;
+        self.exciter_type = exciter_type;
         self.excitation_sent = false;
         self.peak_hold = 0.0;
         self.frames_below_threshold = 0;
         self.start_frame = start_frame;
-        self.resonator = PlaceholderResonator::with_profile_size_rust_and_damage(
+        let velocity_norm = (velocity / 127.0).clamp(0.0, 1.0);
+        let clamped_damage = damage.clamp(0.0, 1.0);
+        self.damage_amount = clamped_damage;
+        self.resonator = ModalResonator::with_profile_size_rust_and_damage(
             profile_id,
             SizeScale::new(size),
             RustAmount::new(rust),
-            DamageAmount::new(damage),
+            DamageAmount::new(clamped_damage),
         );
 
-        let velocity_norm = (velocity / 127.0).clamp(0.0, 1.0);
+        self.scrape_exciter.set_parameters(0.5 + velocity_norm * 0.3, 0.3 + velocity_norm * 0.4, 0.2 + clamped_damage * 0.3);
+        self.scrape_exciter.trigger(velocity_norm);
+
         self.excitation_value = velocity_norm;
         self.excitation_state = 0.0;
         self.excitation_decay = 0.90 - (velocity_norm * 0.70);
@@ -96,10 +111,38 @@ impl Voice {
         self.start_frame
     }
 
+    fn rattle_noise(&mut self, signal_level: f32) -> f32 {
+        if self.damage_amount <= 0.0 {
+            return 0.0;
+        }
+
+        let threshold = 0.02 + (1.0 - self.damage_amount) * 0.15;
+        if signal_level < threshold {
+            return 0.0;
+        }
+
+        self.rattle_phase += 1.61803398875;
+        if self.rattle_phase > 1000.0 {
+            self.rattle_phase -= 1000.0;
+        }
+
+        let noise = (self.rattle_phase.sin() * 43758.5453).fract() * 2.0 - 1.0;
+        let highpass_noise = noise * 0.5;
+        let rattle_amount = self.damage_amount * (signal_level - threshold) * 0.08;
+        highpass_noise * rattle_amount
+    }
+
     pub fn process_sample(&mut self, sample_rate: u32) -> f32 {
         let velocity_norm = self.velocity / 127.0;
 
-        let excitation = if self.excitation_value > 0.0 {
+        let excitation = if self.exciter_type == 1 {
+            if self.active {
+                let resonator_vel = self.resonator.process_sample(0.0, sample_rate);
+                self.scrape_exciter.process_sample(resonator_vel)
+            } else {
+                0.0
+            }
+        } else if self.excitation_value > 0.0 {
             let value = self.excitation_value;
             self.excitation_value *= self.excitation_decay;
             if self.excitation_value < 1e-6 {
@@ -122,13 +165,15 @@ impl Voice {
             sample
         };
 
-        self.highpass_state = 0.8 * self.highpass_state + 0.2 * sample;
-        let highpass = sample - self.highpass_state;
+        let rattle = self.rattle_noise(sample.abs());
+        let sample_with_rattle = sample + rattle;
+
+        self.highpass_state = 0.8 * self.highpass_state + 0.2 * sample_with_rattle;
+        let highpass = sample_with_rattle - self.highpass_state;
         let boost_amount = velocity_norm * 3.0;
-        let boosted_sample = sample + (highpass * boost_amount);
+        let boosted_sample = sample_with_rattle + (highpass * boost_amount);
 
         let clamped = boosted_sample.clamp(-1.0, 1.0);
-        // Denormal flush to prevent denormal number slowdown
         const DENORMAL_FLUSH: f32 = 1e-20;
         let flushed = clamped + DENORMAL_FLUSH - DENORMAL_FLUSH;
 
@@ -146,6 +191,69 @@ impl Voice {
         }
 
         flushed
+    }
+
+    pub fn process_sample_stereo(&mut self, sample_rate: u32, width: f32) -> (f32, f32) {
+        let velocity_norm = self.velocity / 127.0;
+
+        let excitation = if self.exciter_type == 1 {
+            if self.active {
+                let (resonator_l, resonator_r) = self.resonator.process_sample_stereo(0.0, sample_rate, width);
+                let resonator_vel = (resonator_l + resonator_r) * 0.5;
+                self.scrape_exciter.process_sample(resonator_vel)
+            } else {
+                0.0
+            }
+        } else if self.excitation_value > 0.0 {
+            let value = self.excitation_value;
+            self.excitation_value *= self.excitation_decay;
+            if self.excitation_value < 1e-6 {
+                self.excitation_value = 0.0;
+            }
+            value
+        } else {
+            0.0
+        };
+
+        let filtered_excitation = excitation;
+
+        let (left, right) = self.resonator.process_sample_stereo(filtered_excitation, sample_rate, width);
+
+        let left = if !left.is_finite() { 0.0 } else if left.abs() < 1e-30 { 0.0 } else { left };
+        let right = if !right.is_finite() { 0.0 } else if right.abs() < 1e-30 { 0.0 } else { right };
+
+        let mono = (left + right) * 0.5;
+        let rattle = self.rattle_noise(mono.abs());
+        let left_with_rattle = left + rattle;
+        let right_with_rattle = right + rattle;
+
+        self.highpass_state = 0.8 * self.highpass_state + 0.2 * (mono + rattle);
+        let highpass = (mono + rattle) - self.highpass_state;
+        let boost_amount = velocity_norm * 3.0;
+        let boosted_left = left_with_rattle + (highpass * boost_amount);
+        let boosted_right = right_with_rattle + (highpass * boost_amount);
+
+        let clamped_left = boosted_left.clamp(-1.0, 1.0);
+        let clamped_right = boosted_right.clamp(-1.0, 1.0);
+        const DENORMAL_FLUSH: f32 = 1e-20;
+        let flushed_left = clamped_left + DENORMAL_FLUSH - DENORMAL_FLUSH;
+        let flushed_right = clamped_right + DENORMAL_FLUSH - DENORMAL_FLUSH;
+
+        if self.active {
+            let peak = clamped_left.abs().max(clamped_right.abs());
+            self.peak_hold = self.peak_hold.max(peak);
+            self.peak_hold *= PEAK_DECAY;
+            if self.peak_hold < TAIL_ENERGY_THRESHOLD {
+                self.frames_below_threshold += 1;
+                if self.frames_below_threshold >= TAIL_DEACTIVATE_FRAMES {
+                    self.active = false;
+                }
+            } else {
+                self.frames_below_threshold = 0;
+            }
+        }
+
+        (flushed_left, flushed_right)
     }
 }
 
@@ -185,14 +293,14 @@ mod tests {
     #[test]
     fn note_on_activates_voice() {
         let mut voice = Voice::new();
-        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0);
+        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
         assert!(voice.is_active());
     }
 
     #[test]
     fn note_off_deactivates_voice() {
         let mut voice = Voice::new();
-        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0);
+        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
         voice.note_off();
         assert!(!voice.is_active());
     }
@@ -200,7 +308,7 @@ mod tests {
     #[test]
     fn note_off_natural_decay() {
         let mut voice = Voice::new();
-        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0);
+        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
 
         let sample_rate = 48_000u32;
         let note_off_frame = 4800;
@@ -237,7 +345,7 @@ mod tests {
     #[test]
     fn output_clamped_to_unit_range() {
         let mut voice = Voice::new();
-        voice.note_on(60, 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0);
+        voice.note_on(60, 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
 
         let sample_rate = 48_000u32;
         for _ in 0..48_000 {
@@ -252,7 +360,7 @@ mod tests {
     #[test]
     fn output_finite_over_long_render() {
         let mut voice = Voice::new();
-        voice.note_on(36, 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0);
+        voice.note_on(36, 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
 
         let sample_rate = 48_000u32;
         for _ in 0..96_000 {
@@ -264,7 +372,7 @@ mod tests {
     #[test]
     fn active_voice_not_falsely_deactivated() {
         let mut voice = Voice::new();
-        voice.note_on(60, 100.0, ModalProfileId::Tank, 0, 1.0, 0.0, 0.0);
+        voice.note_on(60, 100.0, ModalProfileId::Tank, 0, 1.0, 0.0, 0.0, 0);
 
         let sample_rate = 48_000u32;
         let half_second = 48_000 / 2;

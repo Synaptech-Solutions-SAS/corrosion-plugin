@@ -1,7 +1,7 @@
 use std::f32::consts::PI;
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct ResonatorCoefficients {
+pub struct ResonatorCoefficients {
     pub b0: f32,
     pub a1: f32,
     pub a2: f32,
@@ -23,7 +23,7 @@ impl ResonatorCoefficients {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct SecondOrderMode {
+pub struct SecondOrderMode {
     pub(crate) spec: crate::dsp::ModalModeSpec,
     coefficients: ResonatorCoefficients,
     cached_sample_rate: Option<u32>,
@@ -59,7 +59,7 @@ impl SecondOrderMode {
 }
 
 #[derive(Clone, Debug)]
-pub struct PlaceholderResonator {
+pub struct ModalResonator {
     pub(crate) profile: crate::dsp::ModalProfileId,
     #[allow(dead_code)]
     pub(crate) size_scale: crate::dsp::SizeScale,
@@ -70,7 +70,7 @@ pub struct PlaceholderResonator {
     pub(crate) modes: Vec<SecondOrderMode>,
 }
 
-impl PlaceholderResonator {
+impl ModalResonator {
     fn from_profile(
         profile: crate::dsp::ModalProfile,
         size_scale: crate::dsp::SizeScale,
@@ -140,7 +140,7 @@ impl PlaceholderResonator {
     }
 }
 
-impl Default for PlaceholderResonator {
+impl Default for ModalResonator {
     fn default() -> Self {
         Self::from_profile(
             crate::dsp::ModalProfile::pipe(),
@@ -153,9 +153,10 @@ impl Default for PlaceholderResonator {
 
 pub trait ResonatorCore {
     fn process_sample(&mut self, excitation: f32, sample_rate: u32) -> f32;
+    fn process_sample_stereo(&mut self, excitation: f32, sample_rate: u32, width: f32) -> (f32, f32);
 }
 
-impl ResonatorCore for PlaceholderResonator {
+impl ResonatorCore for ModalResonator {
     fn process_sample(&mut self, excitation: f32, sample_rate: u32) -> f32 {
         let mode_sum = self
             .modes
@@ -167,6 +168,32 @@ impl ResonatorCore for PlaceholderResonator {
             crate::dsp::ModalProfileId::Pipe => mode_sum,
             crate::dsp::ModalProfileId::Plate => mode_sum,
             crate::dsp::ModalProfileId::Tank => mode_sum,
+            crate::dsp::ModalProfileId::Chain => mode_sum,
         }
+    }
+
+    fn process_sample_stereo(&mut self, excitation: f32, sample_rate: u32, width: f32) -> (f32, f32) {
+        let mode_count = self.modes.len();
+        if mode_count == 0 {
+            return (0.0, 0.0);
+        }
+
+        let mut left_sum = 0.0f32;
+        let mut right_sum = 0.0f32;
+
+        for (index, mode) in self.modes.iter_mut().enumerate() {
+            let sample = mode.process(excitation, sample_rate);
+            let mode_position = index as f32 / mode_count.max(1) as f32;
+            let pan_spread = width * mode_position;
+            let pan_direction = if index % 2 == 0 { 1.0 } else { -1.0 };
+            let pan = pan_spread * pan_direction;
+            let left_gain = (1.0 - pan).max(0.0).min(1.0);
+            let right_gain = (1.0 + pan).max(0.0).min(1.0);
+            
+            left_sum += sample * left_gain;
+            right_sum += sample * right_gain;
+        }
+
+        (left_sum, right_sum)
     }
 }

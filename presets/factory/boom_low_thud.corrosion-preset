@@ -2,9 +2,12 @@
   "name": "Low Thud",
   "version": "1",
   "object": "Tank",
+  "exciter": 0,
   "size": 1.65,
   "rust": 0.25,
   "damage": 0.2,
   "drive": 0.35,
-  "output": 1.6
+  "output": 1.6,
+  "width": 0.5,
+  "body": 0.0
 }

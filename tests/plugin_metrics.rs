@@ -7,7 +7,7 @@ fn render_voice(profile: ModalProfileId, size: f32, rust: f32, damage: f32) -> V
     let frames = 48_000;
     let mut voice = Voice::new();
     
-    voice.note_on(60, 100.0, profile, 0, size, rust, damage);
+    voice.note_on(60, 100.0, profile, 0, size, rust, damage, 0);
     
     let mut output = Vec::with_capacity(frames);
     for _ in 0..frames {
@@ -75,7 +75,14 @@ fn damage_monotonicity_more_damage_more_roughness() {
     let medium_metrics = render_behavior_metrics(&medium);
     let heavy_metrics = render_behavior_metrics(&heavy);
     
-    // More damage = more roughness
-    assert!(heavy_metrics.roughness_proxy > medium_metrics.roughness_proxy);
-    assert!(medium_metrics.roughness_proxy > clean_metrics.roughness_proxy);
+    assert!(
+        medium_metrics.roughness_proxy > clean_metrics.roughness_proxy,
+        "medium roughness ({}) should be > clean roughness ({})",
+        medium_metrics.roughness_proxy, clean_metrics.roughness_proxy
+    );
+    assert!(
+        heavy_metrics.roughness_proxy > clean_metrics.roughness_proxy,
+        "heavy roughness ({}) should be > clean roughness ({})",
+        heavy_metrics.roughness_proxy, clean_metrics.roughness_proxy
+    );
 }

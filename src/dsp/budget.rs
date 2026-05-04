@@ -37,11 +37,12 @@ pub fn realtime_mode_count_estimate(
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub fn realtime_mode_count_estimates() -> [RealtimeModeCountEstimate; 3] {
+pub fn realtime_mode_count_estimates() -> [RealtimeModeCountEstimate; 4] {
     [
         RealtimeModeCountEstimate::for_profile(crate::dsp::ModalProfileId::Pipe),
         RealtimeModeCountEstimate::for_profile(crate::dsp::ModalProfileId::Plate),
         RealtimeModeCountEstimate::for_profile(crate::dsp::ModalProfileId::Tank),
+        RealtimeModeCountEstimate::for_profile(crate::dsp::ModalProfileId::Chain),
     ]
 }
 

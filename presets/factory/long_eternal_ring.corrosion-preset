@@ -2,9 +2,12 @@
   "name": "Eternal Ring",
   "version": "1",
   "object": "Pipe",
+  "exciter": 0,
   "size": 1.5,
   "rust": 0.15,
   "damage": 0.2,
   "drive": 0.3,
-  "output": 1.2
+  "output": 1.2,
+  "width": 0.5,
+  "body": 0.0
 }

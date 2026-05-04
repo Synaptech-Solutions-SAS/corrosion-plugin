@@ -14,6 +14,7 @@ fn render_note_at_velocity(velocity: f32, frames: usize) -> f32 {
         1.0,
         0.0,
         0.0,
+        0,
     );
     
     let mut output = Vec::with_capacity(frames);
@@ -46,6 +47,7 @@ fn render_and_normalize(velocity: f32, frames: usize) -> (f32, Vec<f32>) {
         1.0,
         0.0,
         0.0,
+        0,
     );
     
     let mut output = Vec::with_capacity(frames);
@@ -114,10 +116,10 @@ fn velocity_preserves_amplitude_scaling() {
     let high_vel = 1.0 * 127.0;
     
     let mut low_voice = Voice::new();
-    low_voice.note_on(60, low_vel, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0);
+    low_voice.note_on(60, low_vel, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
     
     let mut high_voice = Voice::new();
-    high_voice.note_on(60, high_vel, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0);
+    high_voice.note_on(60, high_vel, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
     
     let mut low_first_samples = Vec::new();
     let mut high_first_samples = Vec::new();
@@ -144,10 +146,10 @@ fn velocity_affects_spectral_content() {
     let frames = 48_000;
     
     let mut low_voice = Voice::new();
-    low_voice.note_on(60, 0.2 * 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0);
+    low_voice.note_on(60, 0.2 * 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
     
     let mut high_voice = Voice::new();
-    high_voice.note_on(60, 1.0 * 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0);
+    high_voice.note_on(60, 1.0 * 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
     
     let mut low_samples = Vec::new();
     let mut high_samples = Vec::new();

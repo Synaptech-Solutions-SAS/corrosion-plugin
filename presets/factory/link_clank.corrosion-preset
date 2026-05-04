@@ -1,0 +1,13 @@
+{
+  "name": "Link Clank",
+  "version": "1",
+  "object": "Chain",
+  "exciter": 0,
+  "size": 1.3,
+  "rust": 0.1,
+  "damage": 0.3,
+  "drive": 0.4,
+  "output": 1.9,
+  "width": 0.7,
+  "body": 0.0
+}

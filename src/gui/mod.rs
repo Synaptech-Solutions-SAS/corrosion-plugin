@@ -1,0 +1,14 @@
+//! Custom GUI for Corrosion
+//!
+//! Physical-metaphor layout with 4 sections:
+//! - Exciter: Controls how the metal is activated (Hit/Scrape)
+//! - Object: The resonating body (Pipe/Plate/Tank/Chain)
+//! - Damage: Wear and deterioration (Rust/Damage)
+//! - Space: Output shaping (Drive/Width/Body/Output)
+//!
+//! No oscillator/filter/amp framing is used - all controls follow
+//! the industrial physical-modeling metaphor.
+
+mod editor;
+
+pub use editor::create_editor;

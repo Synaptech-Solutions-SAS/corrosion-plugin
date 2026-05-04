@@ -106,6 +106,7 @@ pub enum ModalProfileId {
     Pipe,
     Plate,
     Tank,
+    Chain,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -148,12 +149,27 @@ pub(crate) const TANK_MODAL_PROFILE_MODES: [ModalModeSpec; 8] = [
     ModalModeSpec::new(1_002.0, 0.72, 0.0040),
 ];
 
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) const CHAIN_MODAL_PROFILE_MODES: [ModalModeSpec; 10] = [
+    ModalModeSpec::new(74.0, 1.10, 0.0200),
+    ModalModeSpec::new(78.0, 1.02, 0.0192),
+    ModalModeSpec::new(91.0, 0.95, 0.0184),
+    ModalModeSpec::new(95.0, 0.88, 0.0174),
+    ModalModeSpec::new(124.0, 0.80, 0.0160),
+    ModalModeSpec::new(130.0, 0.72, 0.0144),
+    ModalModeSpec::new(167.0, 0.64, 0.0126),
+    ModalModeSpec::new(174.0, 0.55, 0.0106),
+    ModalModeSpec::new(271.0, 0.46, 0.0084),
+    ModalModeSpec::new(283.0, 0.38, 0.0062),
+];
+
 impl ModalProfile {
     pub fn from_id(id: ModalProfileId) -> Self {
         match id {
             ModalProfileId::Pipe => Self::pipe(),
             ModalProfileId::Plate => Self::plate(),
             ModalProfileId::Tank => Self::tank(),
+            ModalProfileId::Chain => Self::chain(),
         }
     }
 
@@ -177,6 +193,14 @@ impl ModalProfile {
         Self {
             id: ModalProfileId::Tank,
             modes: &TANK_MODAL_PROFILE_MODES,
+        }
+    }
+
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub const fn chain() -> Self {
+        Self {
+            id: ModalProfileId::Chain,
+            modes: &CHAIN_MODAL_PROFILE_MODES,
         }
     }
 

@@ -2,7 +2,7 @@
 
 Corrosion is an industrial physical-modeling instrument built as a VST3 and CLAP plugin. The current implementation turns MIDI notes into struck metal resonances using curated modal profiles for pipe, plate, and tank objects. The repository also contains an offline renderer that produces deterministic WAV evidence for DSP behavior and gate-by-gate verification artifacts under `.sisyphus/evidence/`.
 
-**Current Status: Gate 1 CLOSED ✅ | Ready for Gate 2 (MVP 0.1.0)**
+**Current Status: Gate 3 CLOSED ✅ | Version 0.2.0**
 
 The core Rust crate builds a NIH-plug plugin shell, exports VST3 and CLAP entrypoints, preserves the offline renderer, and includes DSP/voice tests for the current physical-modeling path.
 
@@ -31,6 +31,30 @@ The core Rust crate builds a NIH-plug plugin shell, exports VST3 and CLAP entryp
 - ✅ All 51 tests passing
 - ✅ Git tag `gate-1-complete` created
 
+### Gate 2 Complete (CLOSED)
+
+- ✅ Parameter surface expanded: Size, Rust, Damage, Drive, Output
+- ✅ MIDI note frequency scaling applied to modal profiles
+- ✅ 20 factory presets created
+- ✅ Generic editor (NIH-plug egui scaffold)
+- ✅ Hard safety limiter (`apply_output_limiter`)
+- ✅ Real-time parameter changes (no allocation in process loop)
+- ✅ 63 tests passing
+- ✅ Git tag `gate-2-complete` and `v0.1.0` created
+
+### Gate 3 Complete (CLOSED)
+
+- ✅ Scrape exciter with stick-slip friction model
+- ✅ Chain object profile (10-mode high-inharmonicity)
+- ✅ Stereo modal spread with Width parameter
+- ✅ Lightweight body resonator
+- ✅ Signal-dependent damage rattle
+- ✅ 3-stage asymmetric drive waveshaper
+- ✅ Velocity expressiveness (decay + rattle depth)
+- ✅ 43 factory presets total
+- ✅ 83 tests passing
+- ✅ Git tag `gate-3-complete` and `v0.2.0` created
+
 ### Blockers Resolved
 
 All previously blocked items are now resolved:
@@ -38,15 +62,6 @@ All previously blocked items are now resolved:
 - ✅ Windows cross-compile toolchain installed (mingw-w64)
 - ✅ All validation tools installed (pluginval, clap-validator)
 - ✅ Rustup with musl and windows-gnu targets
-
-### Gate 2 TODO (MVP 0.1.0)
-
-- [ ] Expand parameter surface: Size, Rust, Damage, Drive, Output
-- [ ] Apply MIDI note frequency scaling to modal profiles
-- [ ] Create 20+ factory presets
-- [ ] Implement generic editor (NIH-plug egui or default)
-- [ ] Add hard safety limiter / soft clipper
-- [ ] Real-time parameter change handling (no allocation)
 
 ---
 
@@ -110,15 +125,22 @@ clap-validator validate target/bundled/Corrosion.clap/Corrosion.clap --only-fail
 ├── src/
 │   ├── lib.rs             # Plugin entry point
 │   ├── params.rs          # Host parameters
-│   ├── bin/render.rs      # CLI offline renderer
+│   ├── bin/
+│   │   ├── render.rs      # CLI offline renderer
+│   │   └── preset_render.rs # Preset rendering utility
 │   ├── dsp/               # DSP modules
 │   │   ├── mod.rs
-│   │   ├── budget.rs
-│   │   ├── excitation.rs
-│   │   ├── profile.rs
-│   │   ├── resonator.rs
-│   │   └── transforms.rs
+│   │   ├── body.rs        # Body resonator
+│   │   ├── budget.rs      # Real-time mode budgets
+│   │   ├── deterministic_excitation.rs # Offline excitation input
+│   │   ├── exciters/      # Exciter types
+│   │   │   ├── mod.rs
+│   │   │   └── scrape.rs
+│   │   ├── profile.rs     # Modal object profiles
+│   │   ├── resonator.rs   # Modal resonator core
+│   │   └── transforms.rs  # Size/Rust/Damage transforms
 │   ├── offline/mod.rs     # Offline rendering
+│   ├── presets/mod.rs     # Preset persistence
 │   └── voice/             # Voice management
 │       ├── mod.rs
 │       └── manager.rs
@@ -179,7 +201,7 @@ sudo dnf install -y rustup gcc mingw64-gcc python3
 cargo test --workspace
 ```
 
-Expected: **51 tests pass**.
+Expected: **83 tests pass**.
 
 ### Build Linux Bundles
 
@@ -273,10 +295,15 @@ Responsibilities:
 ### `src/params.rs`
 
 Host-visible parameters:
-- `Gain`: linear gain from `0.0` to `+12 dB` equivalent
-- `Object`: integer selecting `Pipe`, `Plate`, or `Tank`
-
-Gate 2 will expand this to include Size, Rust, Damage, Drive, and Output.
+- `Exciter`: `Hit` or `Scrape`
+- `Object`: `Pipe`, `Plate`, `Tank`, or `Chain`
+- `Size`: 0.25 to 2.0 (pitch and decay scaling)
+- `Rust`: 0.0 to 1.0 (darkens and shortens)
+- `Damage`: 0.0 to 1.0 (detunes, roughens, expands modes)
+- `Drive`: 0.0 to 1.0 (asymmetric saturation)
+- `Output`: 0.0 to +12 dB
+- `Width`: 0.0 to 1.0 (stereo modal spread)
+- `Body`: 0.0 to 1.0 (body resonator amount)
 
 ### `src/voice/mod.rs`
 
@@ -287,7 +314,7 @@ Single voice implementation:
 - `note_off()`: marks inactive while allowing resonator tail
 - `process_sample()`: excitation + resonator + safety guards
 
-**Note**: MIDI note-to-frequency conversion exists and is tested, but modal profiles are not yet retuned per MIDI note. This is planned for Gate 2.
+**Note**: MIDI note-to-frequency conversion exists and is tested. Modal profiles are retuned per MIDI note in the realtime path.
 
 ### `src/voice/manager.rs`
 
@@ -301,7 +328,7 @@ Single voice implementation:
 ### `src/dsp/resonator.rs`
 
 Modal resonator core:
-- `PlaceholderResonator`: modal resonator wrapper
+- `ModalResonator`: modal resonator wrapper
 - `ResonatorCore`: trait for offline renderer and voices
 - `SecondOrderMode`: per-mode state
 - `ResonatorCoefficients`: frequency/decay/sample_rate → coefficients
@@ -326,9 +353,21 @@ Physical behavior transforms:
 
 Frozen parameter ranges in `.sisyphus/evidence/parameter-ranges.md`.
 
-### `src/dsp/excitation.rs`
+### `src/dsp/exciters/scrape.rs`
 
-Deterministic excitation input for offline renderer.
+Scrape exciter with stick-slip friction model:
+- Pressure, speed, and roughness parameters
+- Bowed-steel / brake-squeal / tension-rise flavors via presets
+
+### `src/dsp/deterministic_excitation.rs`
+
+Deterministic excitation input for offline renderer and tests.
+
+### `src/dsp/body.rs`
+
+Lightweight body resonator:
+- 4 broad resonances (220Hz, 380Hz, 550Hz, 720Hz)
+- Applied post-voice-mix for low-mid mass
 
 ### `src/dsp/budget.rs`
 
@@ -351,6 +390,10 @@ This module does file I/O and allocation (not real-time safe).
 ### `src/bin/render.rs`
 
 Command-line offline renderer. Renders damage variations to `output/damage-variations/`.
+
+### `src/bin/preset_render.rs`
+
+Preset rendering utility. Renders a single preset to WAV for preset validation and evidence generation.
 
 ### `scripts/check_wav.py`
 
@@ -384,15 +427,11 @@ Offline DSP prototype with pipe/plate/tank profiles, size/rust/damage transforms
 ### Gate 1 ✅ CLOSED
 Minimal NIH-plug VST3/CLAP shell, 8-voice polyphony, MIDI handling, output safety, validation clean.
 
-### Gate 2 🔄 IN PROGRESS (MVP 0.1.0)
-- [ ] Expand parameters (Size, Rust, Damage, Drive, Output)
-- [ ] MIDI note frequency scaling
-- [ ] 20+ factory presets
-- [ ] Generic editor
-- [ ] Hard safety limiter
+### Gate 2 ✅ CLOSED (MVP 0.1.0)
+Expanded parameters, MIDI scaling, 20 presets, generic editor, safety limiter.
 
-### Gate 3 (Industrial Character 0.2.0)
-Scrape exciter, chain object, stereo modal spread, body resonator, 40+ presets.
+### Gate 3 ✅ CLOSED (Industrial Character 0.2.0)
+Scrape exciter, chain object, stereo modal spread, body resonator, 43 presets.
 
 ### Gate 4 (Product UX 0.3.0)
 Custom GUI, macros, randomizer, preset browser.
@@ -416,23 +455,16 @@ Hot path requirements (process callback, per-sample loops):
 - ❌ No heap allocation or vector resizing
 
 Current exceptions (acceptable for setup only):
-- Resonator/profile construction
-- Excitation setup
-
-These will be redesigned for Gate 2 real-time parameter changes.
+- Resonator/profile construction during note-on
+- Preset loading (offline only)
 
 ---
 
 ## Current Limitations
 
-- `Gain` parameter exists but is not applied in `process()` yet
-- MIDI note pitch not used to retune modal profiles (function exists, not wired)
-- Realtime plugin uses default size/rust/damage values
-- No GUI yet
-- No preset bank yet
+- No custom GUI yet (generic NIH-plug editor only)
 - No sequencer yet
-- Tank profile has ~4× peak overshoot (clamped at output, needs gain normalization in Gate 2)
-- `ModalModeSpec::damaged()` allocates `Vec` (acceptable offline, must redesign for Gate 2 RT)
+- `ModalModeSpec::damaged()` allocates `Vec` during voice setup (acceptable for now, Gate 4+ may pre-allocate)
 
 ---
 
@@ -440,7 +472,9 @@ These will be redesigned for Gate 2 real-time parameter changes.
 
 Important evidence files:
 - `.sisyphus/evidence/gate-0-summary.md` - Gate 0 closure
-- `.sisyphus/evidence/gate-1-summary.md` - Gate 1 closure (CLOSED)
+- `.sisyphus/evidence/gate-1-summary.md` - Gate 1 closure
+- `.sisyphus/evidence/gate-2-summary.md` - Gate 2 closure
+- `.sisyphus/evidence/gate-3-summary.md` - Gate 3 closure
 - `.sisyphus/evidence/parameter-ranges.md` - Frozen parameter ranges
 - `.sisyphus/evidence/pluginval-gate-1-linux-vst3.log` - VST3 validation
 - `.sisyphus/evidence/clap-validator-gate-1-linux.log` - CLAP validation

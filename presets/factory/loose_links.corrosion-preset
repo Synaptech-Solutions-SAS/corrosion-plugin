@@ -1,0 +1,13 @@
+{
+  "name": "Loose Links",
+  "version": "1",
+  "object": "Chain",
+  "exciter": 0,
+  "size": 1.4,
+  "rust": 0.4,
+  "damage": 0.5,
+  "drive": 0.3,
+  "output": 1.5,
+  "width": 0.6,
+  "body": 0.2
+}

@@ -2,9 +2,12 @@
   "name": "Subterranean",
   "version": "1",
   "object": "Tank",
+  "exciter": 0,
   "size": 1.8,
   "rust": 0.25,
   "damage": 0.15,
   "drive": 0.3,
-  "output": 1.5
+  "output": 1.5,
+  "width": 0.5,
+  "body": 0.0
 }

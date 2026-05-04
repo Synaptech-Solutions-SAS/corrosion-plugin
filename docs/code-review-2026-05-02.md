@@ -76,7 +76,7 @@ The codebase does not fully satisfy the active plans/docs yet.
 
 - Severity: Major
 - Files: `src/dsp/profile.rs:60`, `src/dsp/resonator.rs:70`
-- Evidence: `ModalModeSpec::damaged()` returns `Vec<Self>`, and `PlaceholderResonator` stores a `Vec<SecondOrderMode>` built during voice setup.
+- Evidence: `ModalModeSpec::damaged()` returns `Vec<Self>`, and `ModalResonator` stores a `Vec<SecondOrderMode>` built during voice setup.
 - Impact: Voice creation on note-on is not allocation-free.
 - Plan impact: This is explicitly incompatible with the Gate 2 / cross-gate real-time safety target of no allocation in the live render path.
 

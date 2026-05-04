@@ -1,0 +1,13 @@
+{
+  "name": "Deep Hum",
+  "version": "1",
+  "object": "Tank",
+  "exciter": 0,
+  "size": 2.0,
+  "rust": 0.1,
+  "damage": 0.0,
+  "drive": 0.0,
+  "output": 1.0,
+  "width": 0.3,
+  "body": 0.8
+}
