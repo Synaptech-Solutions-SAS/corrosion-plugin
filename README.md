@@ -2,7 +2,7 @@
 
 Corrosion is an industrial physical-modeling instrument built as a VST3 and CLAP plugin. The current implementation turns MIDI notes into struck metal resonances using curated modal profiles for pipe, plate, and tank objects. The repository also contains an offline renderer that produces deterministic WAV evidence for DSP behavior and gate-by-gate verification artifacts under `.sisyphus/evidence/`.
 
-**Current Status: Gate 3 CLOSED ✅ | Version 0.2.0**
+**Current Status: Gate 4 CLOSED ✅ | Version 0.3.0**
 
 The core Rust crate builds a NIH-plug plugin shell, exports VST3 and CLAP entrypoints, preserves the offline renderer, and includes DSP/voice tests for the current physical-modeling path.
 
@@ -54,6 +54,22 @@ The core Rust crate builds a NIH-plug plugin shell, exports VST3 and CLAP entryp
 - ✅ 43 factory presets total
 - ✅ 83 tests passing
 - ✅ Git tag `gate-3-complete` and `v0.2.0` created
+
+### Gate 4 Complete (CLOSED)
+
+- ✅ Custom GUI scaffold (Exciter/Object/Damage/Space layout)
+- ✅ Mass macro (maps Object + Size)
+- ✅ Corrosion macro (maps Rust + Body damping)
+- ✅ Violence macro (maps Drive)
+- ✅ Damage macro (maps Damage)
+- ✅ Macro mapping documentation
+- ✅ Randomizer modes (Safe/Object/Damage/Full)
+- ✅ Mutate behavior with Gaussian jitter
+- ✅ Safety constraints (no silent/clipping patches)
+- ✅ Preset browser workflow with category filters
+- ✅ Modal-energy visualization widget
+- ✅ 83 tests passing, all regression tests green
+- ✅ Git tag `gate-4-complete` and `v0.3.0` created
 
 ### Blockers Resolved
 
