@@ -9,6 +9,8 @@
 //! No oscillator/filter/amp framing is used - all controls follow
 //! the industrial physical-modeling metaphor.
 
+#[cfg(feature = "gui")]
 mod editor;
 
+#[cfg(feature = "gui")]
 pub use editor::create_editor;

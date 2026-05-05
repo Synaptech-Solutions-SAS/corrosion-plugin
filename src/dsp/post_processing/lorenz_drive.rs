@@ -1,0 +1,160 @@
+//! Chaotic drive stage for the post chain.
+//!
+//! The drive combines a Lorenz attractor modulation path with a soft tube
+//! saturation curve to introduce motion without breaking real-time safety.
+/// Chaotic drive processor with Lorenz modulation and tube saturation.
+pub struct LorenzDrive {
+    drive_amount: f32,
+    bias_starvation: f32,
+    chaos_depth: f32,
+
+    // Lorenz attractor state
+    x: f32,
+    y: f32,
+    z: f32,
+
+    // Tube saturation state
+    tube_state: f32,
+
+    sample_rate: f32,
+}
+
+impl LorenzDrive {
+    const SIGMA: f32 = 10.0;
+    const BETA: f32 = 8.0 / 3.0;
+
+    /// Creates the drive with neutral settings and stable initial state.
+    pub fn new() -> Self {
+        Self {
+            drive_amount: 0.0,
+            bias_starvation: 0.0,
+            chaos_depth: 0.0,
+            x: 0.1,
+            y: 0.0,
+            z: 0.0,
+            tube_state: 0.0,
+            sample_rate: 48000.0,
+        }
+    }
+
+    /// Sets drive amount, bias starvation, and chaos depth.
+    pub fn set_parameters(&mut self, drive: f32, starvation: f32, chaos: f32) {
+        self.drive_amount = drive.clamp(0.0, 5.0);
+        self.bias_starvation = starvation.clamp(0.0, 1.0);
+        self.chaos_depth = chaos.clamp(0.0, 1.0);
+    }
+
+    /// Updates the internal integration step for the current sample rate.
+    pub fn set_sample_rate(&mut self, sample_rate: f32) {
+        self.sample_rate = sample_rate;
+    }
+
+    /// Processes one sample through the chaotic drive path.
+    pub fn process(&mut self, input: f32) -> f32 {
+        if self.drive_amount < 0.001 {
+            return input;
+        }
+
+        let rho = 28.0;
+        let dt = (1.0 / self.sample_rate).min(0.001);
+
+        let driven = input * (1.0 + self.drive_amount * 0.5);
+
+        let dx = Self::SIGMA * (self.y - self.x);
+        let dy = self.x * (rho - self.z) - self.y;
+        let dz = self.x * self.y - Self::BETA * self.z;
+
+        self.x = (self.x + dx * dt).clamp(-50.0, 50.0);
+        self.y = (self.y + dy * dt).clamp(-50.0, 50.0);
+        self.z = (self.z + dz * dt).clamp(0.0, 100.0);
+
+        let chaos_mod = 1.0 + self.chaos_depth * ((self.x * 0.02).tanh() * 0.5);
+
+        let starvation_gate = if self.bias_starvation > 0.0 {
+            let threshold = 1.0 - self.bias_starvation * 0.7;
+            if ((self.z * 0.01).fract().abs() + 0.5) > threshold {
+                0.3
+            } else {
+                1.0
+            }
+        } else {
+            1.0
+        };
+
+        let tube_in = (driven * chaos_mod * starvation_gate).clamp(-5.0, 5.0);
+        let saturated = Self::tube_saturate(tube_in);
+
+        let wet = saturated.clamp(-1.0, 1.0);
+        let wet_amount = self.drive_amount / 5.0;
+        let dry_wet = wet * wet_amount + input * (1.0 - wet_amount * 0.5);
+
+        dry_wet.clamp(-1.0, 1.0)
+    }
+
+    fn tube_saturate(x: f32) -> f32 {
+        if x.abs() < 0.5 {
+            x
+        } else {
+            let sign = x.signum();
+            let abs_x = x.abs();
+            sign * (0.5 + (abs_x - 0.5) / (1.0 + (abs_x - 0.5).powi(2)))
+        }
+    }
+
+    /// Restores the attractor and saturation state.
+    pub fn reset(&mut self) {
+        self.x = 0.1;
+        self.y = 0.0;
+        self.z = 0.0;
+        self.tube_state = 0.0;
+    }
+}
+
+impl Default for LorenzDrive {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn zero_drive_is_unity() {
+        let mut drive = LorenzDrive::new();
+        drive.set_sample_rate(48000.0);
+
+        for i in 0..100 {
+            let input = (i as f32 * 0.1).sin() * 0.5;
+            let output = drive.process(input);
+            assert!((output - input).abs() < 1e-3, "Zero drive should be unity");
+        }
+    }
+
+    #[test]
+    fn output_bounded() {
+        let mut drive = LorenzDrive::new();
+        drive.set_sample_rate(48000.0);
+        drive.set_parameters(5.0, 1.0, 1.0);
+
+        for i in 0..1000 {
+            let input = (i as f32 * 0.1).sin();
+            let output = drive.process(input);
+            assert!(output.abs() <= 1.6, "Output should be bounded");
+        }
+    }
+
+    #[test]
+    fn no_nan_produced() {
+        let mut drive = LorenzDrive::new();
+        drive.set_sample_rate(48000.0);
+        drive.set_parameters(3.0, 0.5, 0.5);
+
+        for i in 0..500 {
+            let input = (i as f32 * 0.05).sin();
+            let output = drive.process(input);
+            assert!(output.is_finite(), "Output should be finite");
+        }
+    }
+}

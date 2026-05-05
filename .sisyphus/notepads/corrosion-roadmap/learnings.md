@@ -151,3 +151,6 @@ Target directory redirected to `../corrotion-target` to avoid polluting repo.
 - Native `cargo test` in this environment needed the `x86_64-unknown-linux-gnu` target; the default musl target still hits the repo’s pkg-config cross-compilation limitation for `x11`.
 # 2026-05-03
 - When adding new `FloatParam`s in `src/params.rs`, keep the struct field order aligned with the `Default` initializer and use `FloatRange::Linear { min: 0.0, max: 1.0 }` for normalized controls like Width and Body.
+
+- Added module-level `//!` docs and public API docs to exciter modules; matching the existing doc style from drumstick/felt_mallet keeps the family consistent.
+- `cargo test --workspace --no-default-features` passes unit/integration tests but still has pre-existing doctest failures in `src/lib.rs` and `src/voice/mod.rs` unrelated to the exciter docs work.

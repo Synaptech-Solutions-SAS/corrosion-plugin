@@ -112,6 +112,11 @@ fn render_preset(
         Object::Plate => corrotion::dsp::ModalProfileId::Plate,
         Object::Tank => corrotion::dsp::ModalProfileId::Tank,
         Object::Chain => corrotion::dsp::ModalProfileId::Chain,
+        Object::IBeam => corrotion::dsp::ModalProfileId::IBeam,
+        Object::TautCable => corrotion::dsp::ModalProfileId::TautCable,
+        Object::CoilSpring => corrotion::dsp::ModalProfileId::CoilSpring,
+        Object::SheetMetal => corrotion::dsp::ModalProfileId::SheetMetal,
+        Object::IndustrialCog => corrotion::dsp::ModalProfileId::IndustrialCog,
     };
 
     voice_manager.note_on(

@@ -34,6 +34,11 @@ fn object_name(profile_id: ModalProfileId) -> &'static str {
         ModalProfileId::Plate => "Plate",
         ModalProfileId::Tank => "Tank",
         ModalProfileId::Chain => "Chain",
+        ModalProfileId::IBeam => "IBeam",
+        ModalProfileId::TautCable => "TautCable",
+        ModalProfileId::CoilSpring => "CoilSpring",
+        ModalProfileId::SheetMetal => "SheetMetal",
+        ModalProfileId::IndustrialCog => "IndustrialCog",
     }
 }
 

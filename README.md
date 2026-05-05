@@ -55,21 +55,27 @@ The core Rust crate builds a NIH-plug plugin shell, exports VST3 and CLAP entryp
 - ✅ 83 tests passing
 - ✅ Git tag `gate-3-complete` and `v0.2.0` created
 
-### Gate 4 Complete (CLOSED)
+### Gate 4 - Industrial UI Redesign (IN PROGRESS)
 
-- ✅ Custom GUI scaffold (Exciter/Object/Damage/Space layout)
-- ✅ Mass macro (maps Object + Size)
-- ✅ Corrosion macro (maps Rust + Body damping)
-- ✅ Violence macro (maps Drive)
-- ✅ Damage macro (maps Damage)
-- ✅ Macro mapping documentation
-- ✅ Randomizer modes (Safe/Object/Damage/Full)
-- ✅ Mutate behavior with Gaussian jitter
-- ✅ Safety constraints (no silent/clipping patches)
-- ✅ Preset browser workflow with category filters
-- ✅ Modal-energy visualization widget
-- ✅ 83 tests passing, all regression tests green
-- ✅ Git tag `gate-4-complete` and `v0.3.0` created
+**Completed:**
+- ✅ Custom industrial factory-themed GUI with egui
+- ✅ Steel/rust/hazard color palette with dark industrial aesthetic
+- ✅ Custom knob widgets with arc indicators and glow effects
+- ✅ Industrial slider controls with accent colors
+- ✅ Hazard stripe accents on headers and footers
+- ✅ Warning button styling for destructive actions
+- ✅ Three-column layout: Exciter / Resonator / Processing modules
+- ✅ Randomizer panel with 4 modes (Safe/Object/Damage/Full)
+- ✅ Exciter type selector with 17 industrial strike types
+- ✅ Object selector with 9 resonator profiles
+- ✅ Modal energy visualization with gradient bars
+- ✅ Preset browser with category filtering
+- ✅ Zero build warnings, clean release build
+- ✅ VST3 and CLAP bundles generated
+
+**Pending:**
+- ⏳ Wire up macros to actually affect parameters at runtime (UI exists, logic not connected)
+- ⏳ Complete Gate 4 validation and tagging
 
 ### Blockers Resolved
 

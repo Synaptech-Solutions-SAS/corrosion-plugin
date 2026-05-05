@@ -1,8 +1,9 @@
 use nih_plug::prelude::*;
 use std::sync::Arc;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RandomizerMode {
+    #[default]
     Safe,
     Object,
     Damage,
@@ -93,7 +94,7 @@ pub fn random_value(min: f32, max: f32, t: f32) -> f32 {
 
 pub fn randomize_params(mode: RandomizerMode, t_values: &[f32]) -> RandomizedParams {
     let ranges = ranges_for_mode(mode);
-    
+
     RandomizedParams {
         size: random_value(ranges.size.0, ranges.size.1, t_values[0]),
         rust: random_value(ranges.rust.0, ranges.rust.1, t_values[1]),
@@ -127,18 +128,18 @@ impl SafetyConstraints {
         if params.output < 0.01 {
             return false;
         }
-        
+
         if params.damage > 0.8 && params.drive > 0.8 {
             return false;
         }
-        
+
         if params.size < 0.1 || params.size > 3.0 {
             return false;
         }
-        
+
         true
     }
-    
+
     pub fn clamp_to_safe_ranges(params: &mut RandomizedParams) {
         params.size = params.size.clamp(0.25, 2.0);
         params.rust = params.rust.clamp(0.0, 1.0);
@@ -151,24 +152,20 @@ impl SafetyConstraints {
 }
 
 pub fn mode_param() -> IntParam {
-    IntParam::new(
-        "Randomizer Mode",
-        0,
-        IntRange::Linear { min: 0, max: 3 },
-    )
-    .with_value_to_string(Arc::new(|value| {
-        RandomizerMode::from_int(value).name().to_string()
-    }))
-    .with_string_to_value(Arc::new(|string| {
-        let normalized = string.trim().to_lowercase();
-        match normalized.as_str() {
-            "safe" => Some(0),
-            "object" => Some(1),
-            "damage" => Some(2),
-            "full" => Some(3),
-            _ => None,
-        }
-    }))
+    IntParam::new("Randomizer Mode", 0, IntRange::Linear { min: 0, max: 3 })
+        .with_value_to_string(Arc::new(|value| {
+            RandomizerMode::from_int(value).name().to_string()
+        }))
+        .with_string_to_value(Arc::new(|string| {
+            let normalized = string.trim().to_lowercase();
+            match normalized.as_str() {
+                "safe" => Some(0),
+                "object" => Some(1),
+                "damage" => Some(2),
+                "full" => Some(3),
+                _ => None,
+            }
+        }))
 }
 
 impl RandomizerMode {
@@ -180,7 +177,7 @@ impl RandomizerMode {
             _ => RandomizerMode::Safe,
         }
     }
-    
+
     pub fn to_int(self) -> i32 {
         match self {
             RandomizerMode::Safe => 0,

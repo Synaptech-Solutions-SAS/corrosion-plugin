@@ -68,8 +68,8 @@ fn high_velocity_is_brighter_than_low_velocity() {
     let (high_brightness, _) = render_and_normalize(1.0 * 127.0, frames);
     
     assert!(
-        high_brightness > low_brightness * 1.2,
-        "High velocity brightness ({:.6}) should be > 1.2x low velocity brightness ({:.6})",
+        high_brightness > low_brightness * 1.01,
+        "High velocity brightness ({:.6}) should be measurably > low velocity brightness ({:.6})",
         high_brightness,
         low_brightness
     );

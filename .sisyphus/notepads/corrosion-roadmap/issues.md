@@ -87,3 +87,5 @@ These are known limitations tracked for future gates, not blockers:
 
 - First preset-render smoke run failed because the preset fixture path was resolved under `.sisyphus/` instead of the repo root.
 - Fixed by invoking the bin with `--preset tests/fixtures/default.corrosion-preset`.
+
+- Doctest run reports existing failures in `src/lib.rs` and `src/voice/mod.rs` (missing doctest symbols in examples); unrelated to the documentation edits, but they block a fully green `cargo test` output.

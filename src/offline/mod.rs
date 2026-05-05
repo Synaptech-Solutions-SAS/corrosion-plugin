@@ -328,7 +328,7 @@ pub fn render_behavior_metrics(output: &[f32]) -> RenderBehaviorMetrics {
 }
 
 fn float_sample_to_pcm_i16(sample: f32) -> i16 {
-    let clamped = sample.clamp(-1.0, 1.0);
+    let clamped = crate::apply_output_limiter(sample);
     (clamped * i16::MAX as f32) as i16
 }
 
@@ -465,8 +465,7 @@ impl OfflineRenderer {
         let mut artifacts = Vec::with_capacity(FAMILY_COMPARISON_SPECS.len());
 
         for spec in FAMILY_COMPARISON_SPECS {
-            let (output, summary) =
-                self.render(ModalResonator::with_profile(spec.profile_id));
+            let (output, summary) = self.render(ModalResonator::with_profile(spec.profile_id));
             let wav_path = output_dir.join(format!("{}_comparison.wav", spec.slug));
             let summary_path = output_dir.join(format!("{}_comparison_summary.txt", spec.slug));
 
@@ -580,13 +579,12 @@ impl OfflineRenderer {
         let mut artifacts = Vec::with_capacity(DAMAGE_VARIATION_SPECS.len());
 
         for spec in DAMAGE_VARIATION_SPECS {
-            let (output, summary) =
-                self.render(ModalResonator::with_profile_size_rust_and_damage(
-                    spec.profile_id,
-                    SizeScale::default(),
-                    RustAmount::default(),
-                    DamageAmount::new(spec.damage_amount),
-                ));
+            let (output, summary) = self.render(ModalResonator::with_profile_size_rust_and_damage(
+                spec.profile_id,
+                SizeScale::default(),
+                RustAmount::default(),
+                DamageAmount::new(spec.damage_amount),
+            ));
             let behavior_metrics = render_behavior_metrics(&output);
             let wav_path =
                 output_dir.join(format!("{}_{}.wav", spec.profile_slug, spec.variant_slug));

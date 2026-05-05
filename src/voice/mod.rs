@@ -1,13 +1,186 @@
-use crate::dsp::{DamageAmount, ModalProfileId, ModalResonator, ResonatorCore, RustAmount, ScrapeExciter, SizeScale};
+//! Real-time per-note voice execution for Corrosion.
+//!
+//! This module owns the note lifecycle, exciter dispatch, envelope
+//! handling, and tail management for a single polyphonic voice.
+//! `VoiceManager` (in `manager.rs`) schedules these voices, while
+//! `src/lib.rs` forwards host MIDI events and audio-rate parameter
+//! snapshots into the voice layer.
+//!
+//! Each voice pairs a `crate::dsp::ModalResonator` with one of the
+//! exciter families exposed by `crate::dsp`, keeping the audio-thread
+//! path allocation-free and deterministic.
+
+use crate::dsp::{
+    CorrugatedDrag, DamageAmount, Drumstick, ElectromagneticHum, FeltMallet, HandStrike,
+    HardMallet, HeatAmount, HeavyGrinding, LoopMode, MetalChain, MetalPipe, ModalProfileId,
+    ModalResonator, ParticleRain, PneumaticJet, ResonatorCore, RustAmount, ScrapeExciter,
+    SizeScale, SludgeAmount, StiffPointScrape, TensionRise, TensionSnap, ThicknessAmount,
+    WireBrush, MSEG,
+};
+use crate::params::{ExciterFamily, ExciterType};
 
 pub mod manager;
 
 pub use manager::{VoiceManager, MAX_VOICES};
 
+/// Convert a MIDI note number to frequency in hertz.
+///
+/// # Arguments
+///
+/// * `note` - MIDI note number, where 69 equals A4.
+///
+/// # Returns
+///
+/// The corresponding frequency in hertz.
+///
+/// # Examples
+///
+/// ```
+/// assert!((crate::voice::midi_to_hz(69) - 440.0).abs() < 1e-3);
+/// ```
 pub fn midi_to_hz(note: u8) -> f32 {
     440.0 * 2_f32.powf((note as f32 - 69.0) / 12.0)
 }
 
+#[derive(Clone, Copy, Debug)]
+/// Snapshot of per-note controls captured at note-on time.
+///
+/// These values are copied into the voice so the audio thread can
+/// trigger and render without touching shared state.
+pub struct VoiceControls {
+    /// Attack time for hit and specialty envelopes, in seconds.
+    pub env_attack: f32,
+    /// Decay time for the specialty ADSR, in seconds.
+    pub env_decay: f32,
+    /// Sustain level for the specialty ADSR, normalized to 0.0..=1.0.
+    pub env_sustain: f32,
+    /// Release time for hit and specialty envelopes, in seconds.
+    pub env_release: f32,
+    /// Onset stage level for the scrape MSEG.
+    pub mseg_onset: f32,
+    /// Attack stage time for the scrape MSEG, in seconds.
+    pub mseg_attack: f32,
+    /// Hold stage time for the scrape MSEG, in seconds.
+    pub mseg_hold: f32,
+    /// Decay stage time for the scrape MSEG, in seconds.
+    pub mseg_decay: f32,
+    /// Sustain level for the scrape MSEG, normalized to 0.0..=1.0.
+    pub mseg_sustain: f32,
+    /// Release stage time for the scrape MSEG, in seconds.
+    pub mseg_release: f32,
+    /// Scales the overall envelope contribution for scrape voices.
+    pub env_amount: f32,
+    /// Maps velocity to the peak level of the scrape MSEG.
+    pub velocity_to_peak: f32,
+    /// Selects the MSEG loop mode: off, forward, or ping-pong.
+    pub loop_mode: i32,
+    /// Index of the first stage included in the MSEG loop.
+    pub loop_start_stage: i32,
+    /// Index of the last stage included in the MSEG loop.
+    pub loop_end_stage: i32,
+    /// Multiplies every MSEG stage time for global slow/fast control.
+    pub global_time_scale: f32,
+    /// Velocity-to-level response used by the MSEG trigger.
+    pub velocity_to_level: f32,
+    /// Velocity-to-time response used by the MSEG trigger.
+    pub velocity_to_time: f32,
+    /// Curvature applied to the MSEG stage ramps.
+    pub curve_tension: f32,
+    /// Exciter pressure amount used to shape force and contact intensity.
+    pub exciter_pressure: f32,
+    /// Exciter speed amount used to shape motion and scrape rate.
+    pub exciter_speed: f32,
+    /// Exciter roughness amount used to shape texture and noise.
+    pub exciter_roughness: f32,
+    /// Contact point along the resonator used for interaction modeling.
+    pub strike_position: f32,
+    /// Strength of the exciter-to-resonator coupling.
+    pub coupling_stiffness: f32,
+    /// Randomized movement around the strike position.
+    pub position_wander: f32,
+    /// Envelope-driven movement around the strike position.
+    pub position_envelope: f32,
+    /// Pulls the resonator toward its fundamental mode.
+    pub fundamental_anchor: f32,
+    /// Resonator damping control; higher values shorten decay.
+    pub res_damping: f32,
+    /// Resonator brightness control; higher values emphasize upper modes.
+    pub res_brightness: f32,
+    /// Material thickness control passed into the resonator model.
+    pub thickness: f32,
+    /// Thermal coloration control passed into the resonator model.
+    pub heat: f32,
+    /// Viscous/material damping control passed into the resonator model.
+    pub sludge: f32,
+}
+
+impl Default for VoiceControls {
+    fn default() -> Self {
+        Self {
+            env_attack: 0.05,
+            env_decay: 0.3,
+            env_sustain: 0.7,
+            env_release: 0.5,
+            mseg_onset: 0.01,
+            mseg_attack: 0.05,
+            mseg_hold: 0.02,
+            mseg_decay: 0.3,
+            mseg_sustain: 0.5,
+            mseg_release: 0.1,
+            env_amount: 1.0,
+            velocity_to_peak: 0.5,
+            loop_mode: 0,
+            loop_start_stage: 3,
+            loop_end_stage: 4,
+            global_time_scale: 1.0,
+            velocity_to_level: 1.0,
+            velocity_to_time: 0.15,
+            curve_tension: 0.0,
+            exciter_pressure: 0.5,
+            exciter_speed: 0.5,
+            exciter_roughness: 0.3,
+            strike_position: 0.5,
+            coupling_stiffness: 1.0,
+            position_wander: 0.0,
+            position_envelope: 0.0,
+            fundamental_anchor: 0.3,
+            res_damping: 0.5,
+            res_brightness: 0.5,
+            thickness: 0.5,
+            heat: 0.0,
+            sludge: 0.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// Simplified envelope used for hit-style exciter families.
+enum OneShotEnvelopePhase {
+    /// Envelope is silent and inactive.
+    Idle,
+    /// Envelope is rising toward full level.
+    Attack,
+    /// Envelope is falling back to silence.
+    Release,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// ADSR envelope used for specialty exciter families.
+enum AdsrPhase {
+    /// Envelope is silent and inactive.
+    Idle,
+    /// Envelope is rising toward full level.
+    Attack,
+    /// Envelope is falling toward the sustain level.
+    Decay,
+    /// Envelope is holding its sustain level until note-off.
+    Sustain,
+    /// Envelope is falling back to silence after note-off.
+    Release,
+}
+
+/// One polyphonic voice containing a resonator, envelope state, and
+/// every exciter implementation used by the instrument.
 pub struct Voice {
     active: bool,
     note: u8,
@@ -15,7 +188,25 @@ pub struct Voice {
     exciter_type: i32,
     excitation_sent: bool,
     resonator: ModalResonator,
+
+    // One slot per exciter family so dispatch stays allocation-free.
     scrape_exciter: ScrapeExciter,
+    hand_strike: HandStrike,
+    felt_mallet: FeltMallet,
+    hard_mallet: HardMallet,
+    drumstick: Drumstick,
+    wire_brush: WireBrush,
+    metal_pipe: MetalPipe,
+    metal_chain: MetalChain,
+    stiff_point: StiffPointScrape,
+    heavy_grinding: HeavyGrinding,
+    corrugated_drag: CorrugatedDrag,
+    tension_rise: TensionRise,
+    pneumatic_jet: PneumaticJet,
+    electromagnetic_hum: ElectromagneticHum,
+    tension_snap: TensionSnap,
+    particle_rain: ParticleRain,
+
     peak_hold: f32,
     frames_below_threshold: u32,
     start_frame: u64,
@@ -25,6 +216,19 @@ pub struct Voice {
     highpass_state: f32,
     damage_amount: f32,
     rattle_phase: f32,
+    sample_rate: f32,
+    exciter_family: ExciterFamily,
+    one_shot_phase: OneShotEnvelopePhase,
+    one_shot_level: f32,
+    one_shot_attack: f32,
+    one_shot_release: f32,
+    adsr_phase: AdsrPhase,
+    adsr_level: f32,
+    adsr_attack: f32,
+    adsr_decay: f32,
+    adsr_sustain: f32,
+    adsr_release: f32,
+    mseg: MSEG,
 }
 
 const TAIL_ENERGY_THRESHOLD: f32 = 1e-4;
@@ -32,6 +236,13 @@ const TAIL_DEACTIVATE_FRAMES: u32 = 4800;
 const PEAK_DECAY: f32 = 0.999;
 
 impl Voice {
+/// Create an inactive voice with default resonator and exciter state.
+///
+/// The voice starts muted and is only activated by `note_on`.
+///
+/// # Returns
+///
+/// A ready-to-use voice instance.
     pub fn new() -> Self {
         Self {
             active: false,
@@ -40,7 +251,24 @@ impl Voice {
             exciter_type: 0,
             excitation_sent: false,
             resonator: ModalResonator::with_profile(ModalProfileId::Pipe),
+
             scrape_exciter: ScrapeExciter::new(),
+            hand_strike: HandStrike::new(),
+            felt_mallet: FeltMallet::new(),
+            hard_mallet: HardMallet::new(),
+            drumstick: Drumstick::new(),
+            wire_brush: WireBrush::new(),
+            metal_pipe: MetalPipe::new(),
+            metal_chain: MetalChain::new(),
+            stiff_point: StiffPointScrape::new(),
+            heavy_grinding: HeavyGrinding::new(),
+            corrugated_drag: CorrugatedDrag::new(),
+            tension_rise: TensionRise::new(),
+            pneumatic_jet: PneumaticJet::new(),
+            electromagnetic_hum: ElectromagneticHum::new(),
+            tension_snap: TensionSnap::new(),
+            particle_rain: ParticleRain::new(),
+
             peak_hold: 0.0,
             frames_below_threshold: 0,
             start_frame: 0,
@@ -50,9 +278,202 @@ impl Voice {
             highpass_state: 0.0,
             damage_amount: 0.0,
             rattle_phase: 0.0,
+            sample_rate: 48000.0,
+            exciter_family: ExciterFamily::Hit,
+            one_shot_phase: OneShotEnvelopePhase::Idle,
+            one_shot_level: 0.0,
+            one_shot_attack: 0.05,
+            one_shot_release: 0.5,
+            adsr_phase: AdsrPhase::Idle,
+            adsr_level: 0.0,
+            adsr_attack: 0.05,
+            adsr_decay: 0.3,
+            adsr_sustain: 0.7,
+            adsr_release: 0.5,
+            mseg: MSEG::new(),
         }
     }
 
+    fn configure_envelope(
+        &mut self,
+        exciter_type: i32,
+        velocity_norm: f32,
+        controls: VoiceControls,
+    ) {
+        self.exciter_family = ExciterType::from_int(exciter_type).family();
+
+        // Each family gets a different envelope model so the voice can
+        // remain allocation-free while still matching the exciter behavior.
+        match self.exciter_family {
+            ExciterFamily::Hit => {
+                self.one_shot_phase = OneShotEnvelopePhase::Attack;
+                self.one_shot_level = 0.0;
+                self.one_shot_attack = controls.env_attack.max(0.001);
+                self.one_shot_release = controls.env_release.max(0.001);
+                self.mseg = MSEG::new();
+                self.adsr_phase = AdsrPhase::Idle;
+            }
+            ExciterFamily::Specialty => {
+                self.adsr_phase = AdsrPhase::Attack;
+                self.adsr_level = 0.0;
+                self.adsr_attack = controls.env_attack.max(0.001);
+                self.adsr_decay = controls.env_decay.max(0.001);
+                self.adsr_sustain = controls.env_sustain.clamp(0.0, 1.0);
+                self.adsr_release = controls.env_release.max(0.001);
+                self.one_shot_phase = OneShotEnvelopePhase::Idle;
+                self.mseg = MSEG::new();
+            }
+            ExciterFamily::Scrape => {
+                let mut mseg = MSEG::new();
+                mseg.set_sample_rate(self.sample_rate);
+                mseg.set_stage_times(
+                    controls.mseg_onset,
+                    controls.mseg_attack,
+                    controls.mseg_hold,
+                    controls.mseg_decay,
+                    controls.mseg_release,
+                );
+                let peak_level =
+                    (0.5 + controls.velocity_to_peak.clamp(0.0, 1.0) * 0.5).clamp(0.0, 1.0);
+                mseg.set_stage_levels(
+                    controls.mseg_onset.clamp(0.0, 1.0),
+                    peak_level,
+                    controls.mseg_sustain,
+                    0.0,
+                );
+                mseg.set_curves(
+                    controls.curve_tension,
+                    controls.curve_tension,
+                    controls.curve_tension,
+                    controls.curve_tension,
+                );
+                let loop_mode = match controls.loop_mode {
+                    1 => LoopMode::Forward,
+                    2 => LoopMode::PingPong,
+                    _ => LoopMode::Off,
+                };
+                mseg.set_loop(
+                    loop_mode,
+                    controls.loop_start_stage as u8,
+                    controls.loop_end_stage as u8,
+                );
+                mseg.set_velocity_response(controls.velocity_to_level, controls.velocity_to_time);
+                mseg.set_env_amount(controls.env_amount);
+                mseg.set_global_time_scale(controls.global_time_scale);
+                mseg.trigger(velocity_norm);
+                self.mseg = mseg;
+                self.one_shot_phase = OneShotEnvelopePhase::Idle;
+                self.one_shot_level = 0.0;
+            }
+        }
+    }
+
+    fn process_force_envelope(&mut self) -> f32 {
+        // Each family gets a different envelope model so the voice can
+        // remain allocation-free while still matching the exciter behavior.
+        match self.exciter_family {
+            ExciterFamily::Hit => {
+                let dt = 1.0 / self.sample_rate.max(1.0);
+                match self.one_shot_phase {
+                    OneShotEnvelopePhase::Idle => 0.0,
+                    OneShotEnvelopePhase::Attack => {
+                        self.one_shot_level =
+                            (self.one_shot_level + dt / self.one_shot_attack).min(1.0);
+                        if self.one_shot_level >= 1.0 {
+                            self.one_shot_phase = OneShotEnvelopePhase::Release;
+                        }
+                        self.one_shot_level
+                    }
+                    OneShotEnvelopePhase::Release => {
+                        self.one_shot_level =
+                            (self.one_shot_level - dt / self.one_shot_release).max(0.0);
+                        if self.one_shot_level <= 0.0 {
+                            self.one_shot_phase = OneShotEnvelopePhase::Idle;
+                        }
+                        self.one_shot_level
+                    }
+                }
+            }
+            ExciterFamily::Specialty => {
+                let dt = 1.0 / self.sample_rate.max(1.0);
+                match self.adsr_phase {
+                    AdsrPhase::Idle => 0.0,
+                    AdsrPhase::Attack => {
+                        self.adsr_level = (self.adsr_level + dt / self.adsr_attack).min(1.0);
+                        if self.adsr_level >= 1.0 {
+                            self.adsr_phase = AdsrPhase::Decay;
+                        }
+                        self.adsr_level
+                    }
+                    AdsrPhase::Decay => {
+                        let decay_rate = (1.0 - self.adsr_sustain) / self.adsr_decay.max(dt);
+                        self.adsr_level =
+                            (self.adsr_level - decay_rate * dt).max(self.adsr_sustain);
+                        if self.adsr_level <= self.adsr_sustain {
+                            self.adsr_phase = AdsrPhase::Sustain;
+                        }
+                        self.adsr_level
+                    }
+                    AdsrPhase::Sustain => {
+                        if !self.active {
+                            self.adsr_phase = AdsrPhase::Release;
+                        }
+                        self.adsr_sustain
+                    }
+                    AdsrPhase::Release => {
+                        let release_rate = self.adsr_sustain / self.adsr_release.max(dt);
+                        self.adsr_level = (self.adsr_level - release_rate * dt).max(0.0);
+                        if self.adsr_level <= 0.0 {
+                            self.adsr_phase = AdsrPhase::Idle;
+                        }
+                        self.adsr_level
+                    }
+                }
+            }
+            ExciterFamily::Scrape => {
+                self.mseg.set_sample_rate(self.sample_rate);
+                self.mseg.process_sample()
+            }
+        }
+    }
+
+    fn release_force_envelope(&mut self) {
+        // Each family gets a different envelope model so the voice can
+        // remain allocation-free while still matching the exciter behavior.
+        match self.exciter_family {
+            ExciterFamily::Hit => {
+                if self.one_shot_phase != OneShotEnvelopePhase::Idle {
+                    self.one_shot_phase = OneShotEnvelopePhase::Release;
+                }
+            }
+            ExciterFamily::Specialty => {
+                if self.adsr_phase != AdsrPhase::Idle && self.adsr_phase != AdsrPhase::Release {
+                    self.adsr_phase = AdsrPhase::Release;
+                }
+            }
+            ExciterFamily::Scrape => self.mseg.release(),
+        }
+    }
+
+/// Trigger the voice with default envelope controls.
+///
+/// This is the simple entry point used when the caller does not need
+/// per-note control overrides.
+///
+/// # Arguments
+///
+/// * `note` - MIDI note number for the new voice.
+/// * `velocity` - MIDI velocity used to scale excitation energy.
+/// * `profile_id` - Resonator profile to load for the voice.
+/// * `start_frame` - Audio frame when the note began.
+/// * `size` - Material size parameter passed into the resonator.
+/// * `rust` - Material rust parameter passed into the resonator.
+/// * `damage` - Material damage parameter passed into the resonator.
+/// * `exciter_type` - Integer selector for the exciter model.
+///
+/// # Returns
+///
+/// This method mutates the voice in place and returns nothing.
     pub fn note_on(
         &mut self,
         note: u8,
@@ -64,6 +485,51 @@ impl Voice {
         damage: f32,
         exciter_type: i32,
     ) {
+        self.note_on_with_controls(
+            note,
+            velocity,
+            profile_id,
+            start_frame,
+            size,
+            rust,
+            damage,
+            exciter_type,
+            VoiceControls::default(),
+        );
+    }
+
+/// Trigger the voice with explicit envelope and exciter controls.
+///
+/// Used by the host path in `src/lib.rs` when parameter snapshots need
+/// to be applied at note-on time.
+///
+/// # Arguments
+///
+/// * `note` - MIDI note number for the new voice.
+/// * `velocity` - MIDI velocity used to scale excitation energy.
+/// * `profile_id` - Resonator profile to load for the voice.
+/// * `start_frame` - Audio frame when the note began.
+/// * `size` - Material size parameter passed into the resonator.
+/// * `rust` - Material rust parameter passed into the resonator.
+/// * `damage` - Material damage parameter passed into the resonator.
+/// * `exciter_type` - Integer selector for the exciter model.
+/// * `controls` - Complete per-voice control snapshot.
+///
+/// # Returns
+///
+/// This method mutates the voice in place and returns nothing.
+    pub fn note_on_with_controls(
+        &mut self,
+        note: u8,
+        velocity: f32,
+        profile_id: ModalProfileId,
+        start_frame: u64,
+        size: f32,
+        rust: f32,
+        damage: f32,
+        exciter_type: i32,
+        controls: VoiceControls,
+    ) {
         self.active = true;
         self.note = note;
         self.velocity = velocity;
@@ -73,40 +539,245 @@ impl Voice {
         self.frames_below_threshold = 0;
         self.start_frame = start_frame;
         let velocity_norm = (velocity / 127.0).clamp(0.0, 1.0);
-        let clamped_damage = damage.clamp(0.0, 1.0);
+        let clamped_damage = damage.clamp(0.0, 10.0);
         self.damage_amount = clamped_damage;
-        self.resonator = ModalResonator::with_profile_size_rust_and_damage(
+        self.resonator = ModalResonator::with_profile_controls_and_note(
             profile_id,
             SizeScale::new(size),
             RustAmount::new(rust),
             DamageAmount::new(clamped_damage),
+            ThicknessAmount::new(controls.thickness),
+            HeatAmount::new(controls.heat),
+            SludgeAmount::new(controls.sludge),
+            midi_to_hz(note),
+            controls.res_damping,
+            controls.res_brightness,
         );
+        self.resonator.set_interaction_params(
+            controls.strike_position,
+            controls.coupling_stiffness,
+            controls.position_wander,
+            controls.position_envelope,
+            controls.fundamental_anchor,
+            self.sample_rate,
+        );
+        self.configure_envelope(exciter_type, velocity_norm, controls);
 
-        self.scrape_exciter.set_parameters(0.5 + velocity_norm * 0.3, 0.3 + velocity_norm * 0.4, 0.2 + clamped_damage * 0.3);
-        self.scrape_exciter.trigger(velocity_norm);
+        let v_norm = velocity_norm;
+        let pressure = controls.exciter_pressure.clamp(0.0, 1.0);
+        let speed = controls.exciter_speed.clamp(0.0, 1.0);
+        let roughness = controls.exciter_roughness.clamp(0.0, 1.0);
+        // Dispatch the requested exciter family in place; each branch
+        // configures the model and triggers it with the current velocity.
+        match exciter_type {
+            1 => {
+                self.scrape_exciter.set_parameters(
+                    0.2 + pressure * 1.8,
+                    0.1 + speed * 1.9,
+                    0.05 + roughness * 1.45,
+                );
+                self.scrape_exciter.trigger(v_norm);
+            }
+            2 => {
+                self.hand_strike.set_parameters(
+                    0.4 + pressure * 2.6,
+                    0.05 + speed * 0.75,
+                    0.3 + roughness * 1.5,
+                    0.85 + controls.env_release.clamp(0.0, 1.0) * 0.149,
+                );
+                self.hand_strike.trigger(v_norm);
+            }
+            3 => {
+                self.felt_mallet.set_parameters(
+                    0.4 + pressure * 2.2,
+                    0.1 + (1.0 - roughness) * 1.2,
+                    0.5 + speed * 4.0,
+                    2.0 + roughness * 3.0,
+                );
+                self.felt_mallet.trigger(v_norm);
+            }
+            4 => {
+                self.hard_mallet.set_parameters(
+                    0.5 + pressure * 3.0,
+                    0.5 + speed * 4.5,
+                    0.1 + roughness * 1.2,
+                );
+                self.hard_mallet.trigger(v_norm);
+            }
+            5 => {
+                self.drumstick.set_parameters(
+                    0.05 + pressure * 1.2,
+                    0.8 + speed * 6.0,
+                    0.2 + roughness * 0.7,
+                    2 + (roughness * 6.0).round() as u32,
+                );
+                self.drumstick.trigger(v_norm);
+            }
+            6 => {
+                self.wire_brush.set_parameters(
+                    (10.0 + pressure * 120.0) as u32,
+                    10.0 + speed * 240.0,
+                    roughness,
+                    roughness,
+                );
+                self.wire_brush.set_sample_rate(self.sample_rate);
+                self.wire_brush.trigger(v_norm);
+            }
+            7 => {
+                self.metal_pipe.set_parameters(
+                    0.4 + pressure * 2.2,
+                    0.5 + speed * 5.0,
+                    0.5 + roughness * 2.0,
+                    0.96 + controls.env_release.clamp(0.0, 1.0) * 0.039,
+                );
+                self.metal_pipe.set_sample_rate(self.sample_rate);
+                self.metal_pipe.trigger(v_norm);
+            }
+            8 => {
+                self.metal_chain.set_parameters(
+                    (3.0 + pressure * 12.0).round() as u32,
+                    0.2 + pressure * 1.2,
+                    40.0 + speed * 360.0,
+                    roughness,
+                    roughness,
+                );
+                self.metal_chain.set_sample_rate(self.sample_rate);
+                self.metal_chain.trigger(v_norm);
+            }
+            9 => {
+                self.stiff_point.set_parameters(
+                    0.1 + speed * 2.4,
+                    0.1 + pressure * 1.4,
+                    0.1 + roughness * 1.4,
+                    0.1 + (1.0 - roughness) * 0.8,
+                );
+                self.stiff_point.trigger(v_norm);
+            }
+            10 => {
+                self.heavy_grinding.set_parameters(
+                    0.1 + speed * 2.4,
+                    0.1 + pressure * 1.8,
+                    roughness,
+                    roughness,
+                );
+                self.heavy_grinding.trigger(v_norm);
+            }
+            11 => {
+                self.corrugated_drag.set_parameters(
+                    0.1 + speed * 2.4,
+                    0.01 + (1.0 - roughness) * 0.19,
+                    roughness * 2.0,
+                    0.2 + pressure * 1.8,
+                );
+                self.corrugated_drag.trigger(v_norm);
+            }
+            12 => {
+                self.tension_rise.set_parameters(
+                    0.05 + speed * 1.5,
+                    0.1 + pressure * 1.5,
+                    roughness,
+                    0.2 + roughness * 1.2,
+                );
+                self.tension_rise.trigger(v_norm);
+            }
+            13 => {
+                self.pneumatic_jet.set_parameters(
+                    0.1 + pressure * 2.0,
+                    0.1 + speed * 1.5,
+                    roughness * 2.0,
+                );
+                self.pneumatic_jet.trigger(v_norm);
+            }
+            14 => {
+                self.electromagnetic_hum.set_parameters(
+                    40.0 + speed * 80.0,
+                    pressure * 2.0,
+                    roughness * 2.0,
+                );
+                self.electromagnetic_hum.trigger(v_norm);
+            }
+            15 => {
+                self.tension_snap.set_parameters(
+                    0.1 + speed * 1.4,
+                    0.2 + pressure * 2.0,
+                    0.1 + roughness * 1.9,
+                );
+                self.tension_snap.trigger(v_norm);
+            }
+            16 => {
+                self.particle_rain.set_parameters(
+                    0.1 + speed * 3.0,
+                    0.05 + pressure * 0.95,
+                    roughness * 2.0,
+                );
+                self.particle_rain.trigger(v_norm);
+            }
+            _ => {}
+        }
 
         self.excitation_value = velocity_norm;
         self.excitation_state = 0.0;
-        self.excitation_decay = 0.90 - (velocity_norm * 0.70);
+        self.excitation_decay = if exciter_type == 0 {
+            0.99995
+        } else {
+            0.90 - (velocity_norm * 0.70)
+        };
         self.highpass_state = 0.0;
     }
 
+/// Release the voice and begin its tail phase.
+///
+/// The resonator is allowed to decay naturally; only the excitation
+/// source is told to release immediately.
     pub fn note_off(&mut self) {
         self.active = false;
+        self.release_force_envelope();
+        self.scrape_exciter.release();
+        self.stiff_point.release();
+        self.heavy_grinding.release();
+        self.corrugated_drag.release();
+        self.tension_rise.release();
+        self.pneumatic_jet.release();
+        self.electromagnetic_hum.release();
+        self.tension_snap.release();
+        self.particle_rain.release();
     }
 
+/// Report whether the voice is still eligible for scheduling.
+///
+/// A voice can remain audible briefly after `note_off` while its tail
+/// decays below the deactivation threshold.
+///
+/// # Returns
+///
+/// `true` when the voice is active or still tailing; otherwise `false`.
     pub fn is_active(&self) -> bool {
         self.active
     }
 
+/// Return the MIDI note currently assigned to the voice.
+///
+/// # Returns
+///
+/// The active MIDI note number.
     pub fn note(&self) -> u8 {
         self.note
     }
 
+/// Return the decaying peak used by the stealing algorithm.
+///
+/// # Returns
+///
+/// The current peak-hold value.
     pub fn peak_hold(&self) -> f32 {
         self.peak_hold
     }
 
+/// Return the audio frame when the voice was started.
+///
+/// # Returns
+///
+/// The frame counter snapshot captured at note-on time.
     pub fn start_frame(&self) -> u64 {
         self.start_frame
     }
@@ -116,7 +787,7 @@ impl Voice {
             return 0.0;
         }
 
-        let threshold = 0.02 + (1.0 - self.damage_amount) * 0.15;
+        let threshold = 0.02 + (1.0 - self.damage_amount.min(1.0)) * 0.15;
         if signal_level < threshold {
             return 0.0;
         }
@@ -128,35 +799,83 @@ impl Voice {
 
         let noise = (self.rattle_phase.sin() * 43758.5453).fract() * 2.0 - 1.0;
         let highpass_noise = noise * 0.5;
-        let rattle_amount = self.damage_amount * (signal_level - threshold) * 0.08;
+        let rattle_amount = self.damage_amount.min(1.0) * (signal_level - threshold) * 0.08;
         highpass_noise * rattle_amount
     }
 
-    pub fn process_sample(&mut self, sample_rate: u32) -> f32 {
-        let velocity_norm = self.velocity / 127.0;
+    fn process_exciter(&mut self) -> f32 {
+        // If there is no active envelope, there is nothing left to excite.
+        if !self.active
+            && !self.mseg.is_active()
+            && self.one_shot_phase == OneShotEnvelopePhase::Idle
+        {
+            return 0.0;
+        }
 
-        let excitation = if self.exciter_type == 1 {
-            if self.active {
-                let resonator_vel = self.resonator.process_sample(0.0, sample_rate);
-                self.scrape_exciter.process_sample(resonator_vel)
-            } else {
-                0.0
+        let res_disp = self.resonator.get_displacement();
+        let res_vel = self.resonator.get_velocity();
+
+        let envelope = self.process_force_envelope();
+        if envelope <= 0.0 {
+            return 0.0;
+        }
+
+        let excitation = match self.exciter_type {
+            1 => self.scrape_exciter.process_sample(res_vel),
+            2 => self.hand_strike.process_sample(res_disp, res_vel),
+            3 => self.felt_mallet.process_sample(res_disp, 0.0),
+            4 => self.hard_mallet.process_sample(res_disp, res_vel),
+            5 => self.drumstick.process_sample(res_disp, res_vel),
+            6 => self.wire_brush.process_sample(res_disp, 0.0),
+            7 => self.metal_pipe.process_sample(res_disp, 0.0),
+            8 => self.metal_chain.process_sample(res_disp, 0.0),
+            9 => self.stiff_point.process_sample(res_disp, res_vel),
+            10 => self.heavy_grinding.process_sample(res_disp, res_vel),
+            11 => self.corrugated_drag.process_sample(res_disp, res_vel),
+            12 => self.tension_rise.process_sample(res_disp, res_vel),
+            13 => self.pneumatic_jet.process_sample(res_disp, res_vel),
+            14 => self.electromagnetic_hum.process_sample(res_disp, 0.0),
+            15 => self.tension_snap.process_sample(res_disp, 0.0),
+            16 => self.particle_rain.process_sample(res_disp, 0.0),
+            _ => {
+                if self.excitation_value > 0.0 {
+                    let value = self.excitation_value;
+                    self.excitation_value *= self.excitation_decay;
+                    if self.excitation_value < 1e-6 {
+                        self.excitation_value = 0.0;
+                    }
+                    self.excitation_state = self.excitation_state * 0.95 + value * 0.05;
+                    value - self.excitation_state
+                } else {
+                    0.0
+                }
             }
-        } else if self.excitation_value > 0.0 {
-            let value = self.excitation_value;
-            self.excitation_value *= self.excitation_decay;
-            if self.excitation_value < 1e-6 {
-                self.excitation_value = 0.0;
-            }
-            value
-        } else {
-            0.0
         };
 
-        let filtered_excitation = excitation;
+        excitation * envelope
+    }
 
-        let sample = self.resonator.process_sample(filtered_excitation, sample_rate);
+/// Render one mono sample from the voice.
+///
+/// This performs exciter dispatch, resonator processing, NaN/denormal
+/// sanitization, and tail tracking without allocating.
+///
+/// # Arguments
+///
+/// * `sample_rate` - Current host sample rate in hertz.
+///
+/// # Returns
+///
+/// The rendered mono sample.
+    pub fn process_sample(&mut self, sample_rate: u32) -> f32 {
+        self.sample_rate = sample_rate as f32;
+        let velocity_norm = self.velocity / 127.0;
 
+        let excitation = self.process_exciter();
+        let sample = self.resonator.process_sample(excitation, sample_rate);
+
+        // Guard the audio output against NaNs or infinities before it
+        // leaves the voice boundary.
         let sample = if !sample.is_finite() {
             0.0
         } else if sample.abs() < 1e-30 {
@@ -170,13 +889,15 @@ impl Voice {
 
         self.highpass_state = 0.8 * self.highpass_state + 0.2 * sample_with_rattle;
         let highpass = sample_with_rattle - self.highpass_state;
-        let boost_amount = velocity_norm * 3.0;
+        let boost_amount = velocity_norm * if self.exciter_type == 0 { 4.0 } else { 3.0 };
         let boosted_sample = sample_with_rattle + (highpass * boost_amount);
 
         let clamped = boosted_sample.clamp(-1.0, 1.0);
         const DENORMAL_FLUSH: f32 = 1e-20;
         let flushed = clamped + DENORMAL_FLUSH - DENORMAL_FLUSH;
 
+        // Track decaying peak energy so the manager can steal the quietest
+        // voice and so inactive tails eventually self-disable.
         if self.active {
             self.peak_hold = self.peak_hold.max(clamped.abs());
             self.peak_hold *= PEAK_DECAY;
@@ -193,34 +914,48 @@ impl Voice {
         flushed
     }
 
+    fn process_exciter_stereo(&mut self, _width: f32) -> f32 {
+        self.process_exciter()
+    }
+
+/// Render one stereo sample pair from the voice.
+///
+/// The current implementation keeps the exciter mono and lets the
+/// resonator provide stereo spread.
+///
+/// # Arguments
+///
+/// * `sample_rate` - Current host sample rate in hertz.
+/// * `width` - Stereo width control forwarded to the resonator.
+///
+/// # Returns
+///
+/// The rendered `(left, right)` sample pair.
     pub fn process_sample_stereo(&mut self, sample_rate: u32, width: f32) -> (f32, f32) {
+        self.sample_rate = sample_rate as f32;
         let velocity_norm = self.velocity / 127.0;
 
-        let excitation = if self.exciter_type == 1 {
-            if self.active {
-                let (resonator_l, resonator_r) = self.resonator.process_sample_stereo(0.0, sample_rate, width);
-                let resonator_vel = (resonator_l + resonator_r) * 0.5;
-                self.scrape_exciter.process_sample(resonator_vel)
-            } else {
-                0.0
-            }
-        } else if self.excitation_value > 0.0 {
-            let value = self.excitation_value;
-            self.excitation_value *= self.excitation_decay;
-            if self.excitation_value < 1e-6 {
-                self.excitation_value = 0.0;
-            }
-            value
-        } else {
+        let excitation = self.process_exciter_stereo(width);
+        let (left, right) = self
+            .resonator
+            .process_sample_stereo(excitation, sample_rate, width);
+
+        // Guard the stereo output against NaNs or infinities before it
+        // leaves the voice boundary.
+        let left = if !left.is_finite() {
             0.0
+        } else if left.abs() < 1e-30 {
+            0.0
+        } else {
+            left
         };
-
-        let filtered_excitation = excitation;
-
-        let (left, right) = self.resonator.process_sample_stereo(filtered_excitation, sample_rate, width);
-
-        let left = if !left.is_finite() { 0.0 } else if left.abs() < 1e-30 { 0.0 } else { left };
-        let right = if !right.is_finite() { 0.0 } else if right.abs() < 1e-30 { 0.0 } else { right };
+        let right = if !right.is_finite() {
+            0.0
+        } else if right.abs() < 1e-30 {
+            0.0
+        } else {
+            right
+        };
 
         let mono = (left + right) * 0.5;
         let rattle = self.rattle_noise(mono.abs());
@@ -229,7 +964,7 @@ impl Voice {
 
         self.highpass_state = 0.8 * self.highpass_state + 0.2 * (mono + rattle);
         let highpass = (mono + rattle) - self.highpass_state;
-        let boost_amount = velocity_norm * 3.0;
+        let boost_amount = velocity_norm * if self.exciter_type == 0 { 4.0 } else { 3.0 };
         let boosted_left = left_with_rattle + (highpass * boost_amount);
         let boosted_right = right_with_rattle + (highpass * boost_amount);
 
@@ -239,6 +974,8 @@ impl Voice {
         let flushed_left = clamped_left + DENORMAL_FLUSH - DENORMAL_FLUSH;
         let flushed_right = clamped_right + DENORMAL_FLUSH - DENORMAL_FLUSH;
 
+        // Track decaying peak energy so the manager can steal the quietest
+        // voice and so inactive tails eventually self-disable.
         if self.active {
             let peak = clamped_left.abs().max(clamped_right.abs());
             self.peak_hold = self.peak_hold.max(peak);
@@ -265,7 +1002,7 @@ impl Default for Voice {
 
 #[cfg(test)]
 mod tests {
-    use super::{midi_to_hz, Voice};
+    use super::{midi_to_hz, Voice, VoiceControls};
     use crate::dsp::ModalProfileId;
 
     #[test]
@@ -385,5 +1122,119 @@ mod tests {
             voice.is_active(),
             "voice should still be active at t=0.5s for tank profile"
         );
+    }
+
+    #[test]
+    fn note_pitch_retargets_modal_bank() {
+        let mut low_voice = Voice::new();
+        let mut high_voice = Voice::new();
+
+        low_voice.note_on(57, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
+        high_voice.note_on(69, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
+
+        let low_frequency = low_voice.resonator.modes[0].spec.frequency_hz;
+        let high_frequency = high_voice.resonator.modes[0].spec.frequency_hz;
+
+        assert!(
+            high_frequency > low_frequency * 1.9,
+            "expected higher note to retune modal bank: low={low_frequency}, high={high_frequency}"
+        );
+    }
+
+    #[test]
+    fn controls_change_resonator_specs() {
+        let mut dark_voice = Voice::new();
+        let mut bright_voice = Voice::new();
+
+        dark_voice.note_on_with_controls(
+            60,
+            100.0,
+            ModalProfileId::Pipe,
+            0,
+            1.0,
+            0.0,
+            0.0,
+            1,
+            VoiceControls {
+                res_damping: 1.0,
+                res_brightness: 0.0,
+                ..VoiceControls::default()
+            },
+        );
+        bright_voice.note_on_with_controls(
+            60,
+            100.0,
+            ModalProfileId::Pipe,
+            0,
+            1.0,
+            0.0,
+            0.0,
+            1,
+            VoiceControls {
+                res_damping: 0.0,
+                res_brightness: 1.0,
+                ..VoiceControls::default()
+            },
+        );
+
+        assert!(
+            dark_voice.resonator.modes[0].spec.decay_seconds
+                < bright_voice.resonator.modes[0].spec.decay_seconds
+        );
+        assert!(
+            dark_voice.resonator.modes.last().unwrap().spec.gain
+                < bright_voice.resonator.modes.last().unwrap().spec.gain
+        );
+    }
+
+    #[test]
+    fn scrape_controls_change_output() {
+        let mut soft_voice = Voice::new();
+        let mut aggressive_voice = Voice::new();
+
+        soft_voice.note_on_with_controls(
+            60,
+            100.0,
+            ModalProfileId::Pipe,
+            0,
+            1.0,
+            0.0,
+            0.0,
+            1,
+            VoiceControls {
+                exciter_pressure: 0.1,
+                exciter_speed: 0.1,
+                exciter_roughness: 0.1,
+                mseg_sustain: 0.2,
+                ..VoiceControls::default()
+            },
+        );
+        aggressive_voice.note_on_with_controls(
+            60,
+            100.0,
+            ModalProfileId::Pipe,
+            0,
+            1.0,
+            0.0,
+            0.0,
+            1,
+            VoiceControls {
+                exciter_pressure: 1.0,
+                exciter_speed: 1.0,
+                exciter_roughness: 1.0,
+                mseg_sustain: 1.0,
+                ..VoiceControls::default()
+            },
+        );
+
+        let sample_rate = 48_000u32;
+        let soft_energy: f32 = (0..1024)
+            .map(|_| soft_voice.process_sample(sample_rate).abs())
+            .sum();
+        let aggressive_energy: f32 = (0..1024)
+            .map(|_| aggressive_voice.process_sample(sample_rate).abs())
+            .sum();
+
+        assert!(aggressive_energy > soft_energy, "expected scrape controls to change output: soft={soft_energy}, aggressive={aggressive_energy}");
     }
 }

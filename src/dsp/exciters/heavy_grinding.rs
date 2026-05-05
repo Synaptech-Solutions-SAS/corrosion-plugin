@@ -1,0 +1,124 @@
+//! Heavy grinding exciter.
+//!
+//! Models Coulomb friction plus noisy asperity tearing as a scrape moves across
+//! rough material. The math combines a signed friction baseline with filtered
+//! random variation to approximate rough concrete, sandpaper, and grinding
+//! contact inside the `dsp/exciters` scrape family.
+//! Use it for abrasive drag, metal-on-stone grinding, or harsh industrial wear.
+
+/// Scratchy friction exciter with tearing-noise modulation.
+#[derive(Clone, Debug)]
+pub struct HeavyGrinding {
+    grind_speed: f32,
+    grind_pressure: f32,
+    surface_grit: f32,
+    grit_color: f32,
+
+    // State
+    active: bool,
+    noise_state: f32,
+    noise_filter_state: f32,
+    rng_phase: f32,
+}
+
+impl HeavyGrinding {
+    /// Creates a default heavy-grinding exciter.
+    pub fn new() -> Self {
+        Self {
+            grind_speed: 0.5,
+            grind_pressure: 0.6,
+            surface_grit: 0.5,
+            grit_color: 0.3,
+            active: false,
+            noise_state: 0.0,
+            noise_filter_state: 0.0,
+            rng_phase: 0.0,
+        }
+    }
+
+    /// Sets grind speed, pressure, grit amount, and noise color.
+    pub fn set_parameters(&mut self, speed: f32, pressure: f32, grit: f32, color: f32) {
+        self.grind_speed = speed.clamp(0.0, 10.0);
+        self.grind_pressure = pressure.clamp(0.0, 10.0);
+        self.surface_grit = grit.clamp(0.0, 10.0);
+        self.grit_color = color.clamp(0.0, 5.0);
+    }
+
+    /// Starts the grinding motion with an initial scrape velocity.
+    pub fn trigger(&mut self, velocity: f32) {
+        self.active = true;
+        self.grind_speed *= 0.3 + velocity * 0.7;
+        self.rng_phase = velocity * 100.0;
+    }
+
+    /// Processes one sample of friction and tearing noise.
+    pub fn process_sample(&mut self, _resonator_displacement: f32, resonator_velocity: f32) -> f32 {
+        if !self.active || self.grind_speed < 0.001 {
+            return 0.0;
+        }
+
+        let v_rel = self.grind_speed - resonator_velocity;
+        let v_abs = v_rel.abs();
+
+        if v_abs < 0.001 {
+            return 0.0;
+        }
+
+        // Coulomb friction baseline
+        let mu_dynamic = 0.4;
+        let f_base = self.grind_pressure * mu_dynamic * v_rel.signum();
+
+        // Asperity tearing noise (Brownian/chaotic)
+        let raw_noise = self.generate_noise();
+
+        // Filter based on grit_color: low-pass for heavy concrete, high-pass for fine sandpaper
+        // grit_color 0 = heavy concrete (LPF), 1 = sandpaper (HPF)
+        let cutoff = if self.grit_color < 0.5 {
+            100.0 + self.grit_color * 1900.0 // 100-1000Hz LPF-ish
+        } else {
+            1000.0 + (self.grit_color - 0.5) * 6000.0 // 1k-4kHz HPF-ish
+        };
+
+        let filtered_noise = self.filter_noise(raw_noise, cutoff);
+
+        // Tearing scales with velocity and grit amount
+        let f_tearing = filtered_noise * v_abs * self.surface_grit * 2.0;
+
+        let total = f_base + f_tearing;
+
+        // Amplitude scales with grind speed
+        total * self.grind_speed * 3.0
+    }
+
+    /// Returns whether the grinder is still engaged.
+    pub fn is_active(&self) -> bool {
+        self.active
+    }
+
+    /// Releases the contact and stops the grind.
+    pub fn release(&mut self) {
+        self.active = false;
+    }
+
+    fn generate_noise(&mut self) -> f32 {
+        // Brownian noise approximation (accumulated random steps)
+        self.rng_phase += 0.1;
+        let step = (self.rng_phase.sin() * 43758.5453).fract() * 2.0 - 1.0;
+        self.noise_state += step * 0.1;
+        self.noise_state *= 0.99; // Leak
+        self.noise_state.clamp(-1.0, 1.0)
+    }
+
+    fn filter_noise(&mut self, input: f32, cutoff_hz: f32) -> f32 {
+        // Simple first-order filter
+        let alpha = (cutoff_hz / 10000.0).clamp(0.01, 0.99);
+        self.noise_filter_state += alpha * (input - self.noise_filter_state);
+        self.noise_filter_state
+    }
+}
+
+impl Default for HeavyGrinding {
+    fn default() -> Self {
+        Self::new()
+    }
+}

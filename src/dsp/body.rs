@@ -1,7 +1,13 @@
+//! Body resonator for low-frequency support coloration.
+//!
+//! The voice layer can mix this resonator with the main modal object to add a
+//! perceptible body response without changing the primary modal profile.
+
 use crate::dsp::ResonatorCoefficients;
 use std::f32::consts::PI;
 
 #[derive(Clone, Debug)]
+/// Four-mode body resonator driven in the audio-rate voice path.
 pub struct BodyResonator {
     modes: [BodyMode; 4],
 }
@@ -54,6 +60,7 @@ impl BodyMode {
 }
 
 impl BodyResonator {
+    /// Create the default four-mode body resonator.
     pub fn new() -> Self {
         Self {
             modes: [
@@ -65,6 +72,10 @@ impl BodyResonator {
         }
     }
 
+    /// Process one sample through the body resonator.
+    ///
+    /// `amount` scales the wet contribution, and the input is returned dry when
+    /// the amount is zero.
     pub fn process_sample(&mut self, input: f32, sample_rate: u32, amount: f32) -> f32 {
         if amount <= 0.0 {
             return 0.0;
@@ -81,6 +92,7 @@ impl BodyResonator {
 }
 
 impl Default for BodyResonator {
+    /// Construct the default body resonator.
     fn default() -> Self {
         Self::new()
     }

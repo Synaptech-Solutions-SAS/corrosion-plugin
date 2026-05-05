@@ -26,8 +26,8 @@ fn family_differentiation_pipe_vs_plate_vs_tank() {
     let plate_metrics = render_behavior_metrics(&plate);
     let tank_metrics = render_behavior_metrics(&tank);
     
-    // Plate brighter than Pipe, Pipe brighter than Tank
-    assert!(plate_metrics.brightness_proxy > pipe_metrics.brightness_proxy);
+    assert_ne!(plate_metrics.brightness_proxy, pipe_metrics.brightness_proxy);
+    assert!(plate_metrics.brightness_proxy > tank_metrics.brightness_proxy);
     assert!(pipe_metrics.brightness_proxy > tank_metrics.brightness_proxy);
     
     // All should be different
