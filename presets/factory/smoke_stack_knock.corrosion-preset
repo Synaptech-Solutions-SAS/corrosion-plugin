@@ -1,0 +1,13 @@
+{
+  "name": "Smoke Stack Knock",
+  "version": "3",
+  "object": "SheetMetal",
+  "exciter": 10,
+  "size": 1.5727,
+  "rust": 2.0343,
+  "damage": 3.2172,
+  "drive": 0.5374,
+  "output": 0.7682,
+  "width": -0.2444,
+  "body": 0.8081
+}

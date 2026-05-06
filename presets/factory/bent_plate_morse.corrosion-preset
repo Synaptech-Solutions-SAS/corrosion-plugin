@@ -1,0 +1,13 @@
+{
+  "name": "Bent Plate Morse",
+  "version": "3",
+  "object": "IBeam",
+  "exciter": 10,
+  "size": 1.7303,
+  "rust": 2.3414,
+  "damage": 3.7424,
+  "drive": 0.7636,
+  "output": 0.8086,
+  "width": -0.0667,
+  "body": 1.0667
+}

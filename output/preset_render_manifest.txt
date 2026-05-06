@@ -1,0 +1,2 @@
+sample_rate=48000 duration=0.25 note=60 velocity=127 frame_count=12000 preset_count=1
+preset=drone_pipe.corrosion-preset name="Drone Pipe" object=Pipe exciter=0 wav=output/drone_pipe.wav peak=0.966100 rms=0.795358 checksum=15406470892385405566 brightness=0.019218 roughness=38.260307 late_to_early=2.908715 zero_crossings=90

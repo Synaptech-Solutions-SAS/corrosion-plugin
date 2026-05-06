@@ -1,0 +1,13 @@
+{
+  "name": "Worn Chain Hail",
+  "version": "3",
+  "object": "Chain",
+  "exciter": 5,
+  "size": 1.4,
+  "rust": 1.9,
+  "damage": 4.4,
+  "drive": 1.8,
+  "output": 0.9399,
+  "width": 0.5111,
+  "body": 1.9071
+}

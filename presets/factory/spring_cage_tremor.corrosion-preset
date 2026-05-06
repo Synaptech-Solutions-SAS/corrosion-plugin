@@ -1,0 +1,13 @@
+{
+  "name": "Spring Cage Tremor",
+  "version": "3",
+  "object": "Pipe",
+  "exciter": 15,
+  "size": 1.5924,
+  "rust": 2.0727,
+  "damage": 3.2828,
+  "drive": 0.5657,
+  "output": 0.7732,
+  "width": -0.2222,
+  "body": 0.8404
+}

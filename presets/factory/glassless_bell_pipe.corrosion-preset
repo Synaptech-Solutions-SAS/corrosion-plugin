@@ -1,0 +1,13 @@
+{
+  "name": "Glassless Bell Pipe",
+  "version": "3",
+  "object": "TautCable",
+  "exciter": 13,
+  "size": 2.2621,
+  "rust": 3.3778,
+  "damage": 5.5152,
+  "drive": 1.5273,
+  "output": 0.9449,
+  "width": 0.5333,
+  "body": 1.9394
+}

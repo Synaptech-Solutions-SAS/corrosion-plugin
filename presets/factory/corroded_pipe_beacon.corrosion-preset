@@ -1,0 +1,13 @@
+{
+  "name": "Corroded Pipe Beacon",
+  "version": "3",
+  "object": "Chain",
+  "exciter": 15,
+  "size": 1.4348,
+  "rust": 1.7657,
+  "damage": 2.7576,
+  "drive": 0.3394,
+  "output": 0.7328,
+  "width": -0.4,
+  "body": 0.5818
+}

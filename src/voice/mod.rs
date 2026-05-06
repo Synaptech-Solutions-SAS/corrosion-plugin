@@ -893,7 +893,7 @@ impl Voice {
 
         self.excitation_value = velocity_norm;
         self.excitation_state = 0.0;
-        self.excitation_decay = 0.90 - (velocity_norm * 0.70);
+        self.excitation_decay = (0.985 - (velocity_norm * 0.35)).clamp(0.6, 0.985);
         self.highpass_state = 0.0;
     }
 
@@ -1049,7 +1049,7 @@ impl Voice {
 
         self.highpass_state = 0.8 * self.highpass_state + 0.2 * sample_with_rattle;
         let highpass = sample_with_rattle - self.highpass_state;
-        let boost_amount = velocity_norm * 3.0;
+        let boost_amount = velocity_norm * 1.5;
         let boosted_sample = sample_with_rattle + (highpass * boost_amount);
 
         let clamped = boosted_sample.clamp(-1.0, 1.0);
@@ -1124,7 +1124,7 @@ impl Voice {
 
         self.highpass_state = 0.8 * self.highpass_state + 0.2 * (mono + rattle);
         let highpass = (mono + rattle) - self.highpass_state;
-        let boost_amount = velocity_norm * if self.exciter_type == 0 { 4.0 } else { 3.0 };
+        let boost_amount = velocity_norm * if self.exciter_type == 0 { 2.0 } else { 1.5 };
         let boosted_left = left_with_rattle + (highpass * boost_amount);
         let boosted_right = right_with_rattle + (highpass * boost_amount);
 

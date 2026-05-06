@@ -1,0 +1,13 @@
+{
+  "name": "Felt Hammered Hull",
+  "version": "3",
+  "object": "Chain",
+  "exciter": 11,
+  "size": 0.8045,
+  "rust": 0.5374,
+  "damage": 0.6566,
+  "drive": 2.2626,
+  "output": 0.5712,
+  "width": 1.1111,
+  "body": 2.7798
+}

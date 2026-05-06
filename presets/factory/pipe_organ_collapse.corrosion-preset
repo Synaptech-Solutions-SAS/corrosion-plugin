@@ -1,0 +1,13 @@
+{
+  "name": "Pipe Organ Collapse",
+  "version": "3",
+  "object": "SheetMetal",
+  "exciter": 6,
+  "size": 0.9424,
+  "rust": 0.8061,
+  "damage": 1.1162,
+  "drive": 2.4606,
+  "output": 0.6066,
+  "width": 1.2667,
+  "body": 3.0061
+}

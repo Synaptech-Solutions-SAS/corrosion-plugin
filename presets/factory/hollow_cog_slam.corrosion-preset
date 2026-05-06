@@ -1,0 +1,13 @@
+{
+  "name": "Hollow Cog Slam",
+  "version": "3",
+  "object": "Chain",
+  "exciter": 4,
+  "size": 1.1394,
+  "rust": 1.1899,
+  "damage": 4.0,
+  "drive": 2.7434,
+  "output": 0.65,
+  "width": 1.4889,
+  "body": 0.097
+}

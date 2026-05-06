@@ -1,0 +1,13 @@
+{
+  "name": "Taut Wire Alarm",
+  "version": "3",
+  "object": "TautCable",
+  "exciter": 4,
+  "size": 0.85,
+  "rust": 0.7,
+  "damage": 3.2,
+  "drive": 1.8,
+  "output": 0.82,
+  "width": 1.4222,
+  "body": 0.8
+}

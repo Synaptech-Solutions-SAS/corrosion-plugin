@@ -1,0 +1,13 @@
+{
+  "name": "Tensioned Debris Rain",
+  "version": "3",
+  "object": "Chain",
+  "exciter": 11,
+  "size": 2.3015,
+  "rust": 3.4545,
+  "damage": 5.6465,
+  "drive": 1.5838,
+  "output": 0.45,
+  "width": 0.5778,
+  "body": 2.004
+}

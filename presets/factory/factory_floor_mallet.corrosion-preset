@@ -1,0 +1,13 @@
+{
+  "name": "Factory Floor Mallet",
+  "version": "3",
+  "object": "Plate",
+  "exciter": 2,
+  "size": 1.6515,
+  "rust": 2.1879,
+  "damage": 3.4798,
+  "drive": 0.6505,
+  "output": 0.7884,
+  "width": -0.1556,
+  "body": 0.9374
+}

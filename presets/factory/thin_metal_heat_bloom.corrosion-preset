@@ -1,0 +1,13 @@
+{
+  "name": "Thin Metal Heat Bloom",
+  "version": "3",
+  "object": "Pipe",
+  "exciter": 4,
+  "size": 1.297,
+  "rust": 1.497,
+  "damage": 2.298,
+  "drive": 0.1414,
+  "output": 0.6975,
+  "width": 1.6667,
+  "body": 0.3556
+}

@@ -1,0 +1,13 @@
+{
+  "name": "Foundry Air Valve",
+  "version": "3",
+  "object": "Pipe",
+  "exciter": 12,
+  "size": 1.5333,
+  "rust": 1.9576,
+  "damage": 3.0859,
+  "drive": 0.4808,
+  "output": 0.7581,
+  "width": -0.2889,
+  "body": 0.7434
+}

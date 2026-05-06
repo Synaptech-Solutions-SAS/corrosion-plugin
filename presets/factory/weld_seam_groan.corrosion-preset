@@ -1,0 +1,13 @@
+{
+  "name": "Weld Seam Groan",
+  "version": "3",
+  "object": "Pipe",
+  "exciter": 1,
+  "size": 1.0606,
+  "rust": 1.0364,
+  "damage": 1.5101,
+  "drive": 2.6303,
+  "output": 0.6369,
+  "width": 1.4,
+  "body": 3.2
+}

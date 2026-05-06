@@ -171,14 +171,12 @@ impl VoiceManager {
     pub fn process_sample(&mut self, sample_rate: u32) -> f32 {
         // Advance the shared frame clock so note age can participate in
         // tie-breaking during voice stealing.
-        // Advance the shared frame clock so note age can participate in
-        // tie-breaking during voice stealing.
         self.frame_counter += 1;
         let mut sum = 0.0f32;
         for voice in &mut self.voices {
             sum += voice.process_sample(sample_rate);
         }
-        sum / MAX_VOICES as f32
+        sum
     }
 
     /// Render the current stereo sample pair for the whole voice pool.
@@ -202,8 +200,7 @@ impl VoiceManager {
             left_sum += left;
             right_sum += right;
         }
-        let scale = 1.0 / MAX_VOICES as f32;
-        (left_sum * scale, right_sum * scale)
+        (left_sum, right_sum)
     }
 }
 
@@ -216,6 +213,43 @@ impl Default for VoiceManager {
 #[cfg(test)]
 mod tests {
     use super::{VoiceManager, MAX_VOICES};
+    use crate::voice::Voice;
+
+    #[test]
+    fn single_voice_is_not_downmixed_by_empty_slots() {
+        let mut manager = VoiceManager::new();
+        let mut direct_voice = Voice::new();
+
+        manager.note_on(
+            60,
+            100.0,
+            crate::dsp::ModalProfileId::Pipe,
+            1.0,
+            0.0,
+            0.0,
+            2,
+        );
+        direct_voice.note_on(
+            60,
+            100.0,
+            crate::dsp::ModalProfileId::Pipe,
+            0,
+            1.0,
+            0.0,
+            0.0,
+            2,
+        );
+
+        let sample_rate = 48_000u32;
+        let mut manager_peak = 0.0f32;
+        let mut direct_peak = 0.0f32;
+        for _ in 0..4096 {
+            manager_peak = manager_peak.max(manager.process_sample(sample_rate).abs());
+            direct_peak = direct_peak.max(direct_voice.process_sample(sample_rate).abs());
+        }
+
+        assert!(manager_peak > direct_peak * 0.95, "single voice should not be divided by empty slots: manager={manager_peak} direct={direct_peak}");
+    }
 
     #[test]
     fn eight_simultaneous_notes_audible() {

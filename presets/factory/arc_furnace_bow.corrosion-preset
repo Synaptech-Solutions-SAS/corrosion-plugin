@@ -1,0 +1,13 @@
+{
+  "name": "Arc Furnace Bow",
+  "version": "3",
+  "object": "TautCable",
+  "exciter": 1,
+  "size": 1.3955,
+  "rust": 1.6889,
+  "damage": 2.6263,
+  "drive": 0.2828,
+  "output": 0.7227,
+  "width": 1.7778,
+  "body": 0.5172
+}

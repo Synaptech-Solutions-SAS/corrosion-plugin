@@ -1,0 +1,13 @@
+{
+  "name": "Particle Silo Fall",
+  "version": "3",
+  "object": "Tank",
+  "exciter": 5,
+  "size": 2.1833,
+  "rust": 3.2242,
+  "damage": 5.2525,
+  "drive": 1.4141,
+  "output": 0.9247,
+  "width": 0.4444,
+  "body": 1.8101
+}

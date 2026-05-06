@@ -1,0 +1,13 @@
+{
+  "name": "Cog Teeth Choir",
+  "version": "3",
+  "object": "IndustrialCog",
+  "exciter": 5,
+  "size": 2.3409,
+  "rust": 3.5313,
+  "damage": 5.7778,
+  "drive": 1.6404,
+  "output": 0.4601,
+  "width": 0.6222,
+  "body": 2.0687
+}

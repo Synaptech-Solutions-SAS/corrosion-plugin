@@ -1,0 +1,13 @@
+{
+  "name": "Grinder In A Well",
+  "version": "3",
+  "object": "Plate",
+  "exciter": 14,
+  "size": 1.0212,
+  "rust": 0.9596,
+  "damage": 1.3788,
+  "drive": 2.5737,
+  "output": 0.6268,
+  "width": 1.3556,
+  "body": 3.1354
+}

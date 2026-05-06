@@ -1,0 +1,13 @@
+{
+  "name": "Broken Brake Psalm",
+  "version": "3",
+  "object": "Plate",
+  "exciter": 4,
+  "size": 1.4,
+  "rust": 1.4,
+  "damage": 4.2,
+  "drive": 1.6,
+  "output": 0.82,
+  "width": 0.3778,
+  "body": 1.7131
+}

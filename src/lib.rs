@@ -328,7 +328,7 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
             // The voice manager handles polyphony and voice allocation
             plugin.voice_manager.note_on_with_controls(
                 note,
-                velocity as f32,
+                note_event_velocity_to_voice_velocity(velocity),
                 profile,
                 plugin.params.size.value(),
                 plugin.params.rust.value(),
@@ -343,6 +343,18 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
         }
         _ => {}
     }
+}
+
+/// Convert NIH-plug's normalized note velocity into the MIDI-scale velocity
+/// expected by the current voice layer.
+///
+/// `NoteEvent::NoteOn::velocity` is documented by NIH-plug as `[0, 1]`, while
+/// `Voice::note_on()` and the existing voice/renderer tests use the traditional
+/// MIDI `0..127` scale. Keeping the conversion at the host boundary prevents
+/// hosted notes from being attenuated twice before they reach the exciters.
+#[inline]
+fn note_event_velocity_to_voice_velocity(velocity: f32) -> f32 {
+    velocity.clamp(0.0, 1.0) * 127.0
 }
 
 /// Processes pending MIDI events that are scheduled for the current sample.
@@ -637,7 +649,10 @@ impl Plugin for Corrosion {
 
 #[cfg(test)]
 mod tests {
-    use super::{handle_note_event, process_pending_events, Corrosion, Object};
+    use super::{
+        apply_drive, apply_output_limiter, handle_note_event,
+        note_event_velocity_to_voice_velocity, process_pending_events, Corrosion, Object,
+    };
     use crate::params::object_param;
     use nih_plug::prelude::NoteEvent;
     use std::sync::Arc;
@@ -707,6 +722,78 @@ mod tests {
             "stacked notes should accumulate energy, stacked={stacked_energy} single={single_note_energy}"
         );
         assert!(next_event.is_none(), "all queued events should be consumed");
+    }
+
+    #[test]
+    fn note_event_velocity_is_converted_for_voice_layer() {
+        assert_eq!(note_event_velocity_to_voice_velocity(0.0), 0.0);
+        assert_eq!(note_event_velocity_to_voice_velocity(0.5), 63.5);
+        assert_eq!(note_event_velocity_to_voice_velocity(1.0), 127.0);
+    }
+
+    #[test]
+    fn hosted_normalized_note_velocity_reaches_output_chain() {
+        let mut plugin = Corrosion::default();
+        handle_note_event(
+            &mut plugin,
+            NoteEvent::NoteOn {
+                timing: 0,
+                voice_id: None,
+                channel: 0,
+                note: 60,
+                velocity: 1.0,
+            },
+        );
+
+        let sample_rate = 48_000u32;
+        let mut peak = 0.0f32;
+        for _ in 0..4096 {
+            let (left_sample, right_sample) = plugin
+                .voice_manager
+                .process_sample_stereo(sample_rate, plugin.params.width.value());
+
+            let mut left = apply_drive(left_sample, plugin.params.drive.value());
+            let mut right = apply_drive(right_sample, plugin.params.drive.value());
+
+            plugin.post_chain.set_sample_rate(sample_rate as f32);
+            plugin.post_chain.set_filter_params(
+                plugin.params.filter_cutoff.value(),
+                plugin.params.filter_resonance.value(),
+                plugin.params.component_tolerance.value(),
+            );
+            plugin.post_chain.set_drive_params(
+                plugin.params.drive_amount.value(),
+                plugin.params.bias_starvation.value(),
+                plugin.params.chaos_depth.value(),
+            );
+            plugin.post_chain.set_body_params(
+                plugin.params.chassis_material.value(),
+                plugin.params.chassis_volume.value(),
+            );
+            plugin.post_chain.set_spread_params(
+                plugin.params.spread_width.value(),
+                plugin.params.listener_proximity.value(),
+            );
+            plugin.post_chain.set_space_mode(crate::dsp::SpaceMode::Off);
+            plugin
+                .post_chain
+                .set_space_amount(plugin.params.space_amount.value());
+            plugin.post_chain.set_clipper_params(
+                plugin.params.analog_ceiling.value(),
+                plugin.params.diode_softness.value(),
+            );
+
+            (left, right) = plugin.post_chain.process(left, right);
+            left = apply_output_limiter(left * plugin.params.output.value());
+            right = apply_output_limiter(right * plugin.params.output.value());
+            peak = peak.max(left.abs()).max(right.abs());
+        }
+
+        eprintln!("hosted normalized note peak={peak:.6}");
+        assert!(
+            peak > 0.01,
+            "hosted note should produce audible output, peak={peak}"
+        );
     }
 
     /// Tests that Object parameter displays correct names.

@@ -1,0 +1,13 @@
+{
+  "name": "Corrugated Drag Ritual",
+  "version": "3",
+  "object": "Pipe",
+  "exciter": 7,
+  "size": 1.8288,
+  "rust": 2.5333,
+  "damage": 4.0707,
+  "drive": 0.9051,
+  "output": 0.8338,
+  "width": 0.0444,
+  "body": 1.2283
+}

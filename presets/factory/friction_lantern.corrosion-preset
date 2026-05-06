@@ -1,0 +1,13 @@
+{
+  "name": "Friction Lantern",
+  "version": "3",
+  "object": "CoilSpring",
+  "exciter": 3,
+  "size": 2.3803,
+  "rust": 3.6081,
+  "damage": 5.9091,
+  "drive": 1.697,
+  "output": 0.4702,
+  "width": 0.6667,
+  "body": 2.1333
+}

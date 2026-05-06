@@ -1,14 +1,41 @@
+use nih_plug::params::persist::PersistentField;
 use nih_plug::prelude::*;
-use nih_plug_egui::{create_egui_editor, egui, EguiState};
+use nih_plug_egui::{create_egui_editor, egui, resizable_window::ResizableWindow, EguiState};
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::params::{exciter_model_items, CorrosionParams, ExciterFamily, ExciterType, Object};
+use crate::Preset;
 
-const BASE_EDITOR_WIDTH: u32 = 1440;
-const BASE_EDITOR_HEIGHT: u32 = 1024;
+/// Logical editor width for the 100% UI scale.
+///
+/// The first custom editor pass used 1440x1024 as its 100% anchor, which made
+/// the 75% option the practical size for normal plugin use. The product
+/// baseline is now that former 75% footprint, so every scale option is derived
+/// from 1080x768 instead of keeping a separate "design size" and "window size".
+const BASE_EDITOR_WIDTH: u32 = 1080;
+/// Logical editor height for the 100% UI scale.
+const BASE_EDITOR_HEIGHT: u32 = 768;
 
 struct EditorUiState {
     last_ui_scale: i32,
+    /// Last logical window size requested through egui's viewport command.
+    ///
+    /// This is separate from `last_ui_scale` because hosts can restore an old
+    /// persisted editor size before the first frame. Tracking the requested
+    /// size lets the editor correct that stale outer window even when the scale
+    /// parameter itself did not change during this open editor session.
+    last_requested_size: (u32, u32),
+    factory_presets: Vec<FactoryPresetEntry>,
+    selected_factory_preset: usize,
+    last_preset_status: Option<String>,
+}
+
+#[derive(Clone)]
+struct FactoryPresetEntry {
+    name: String,
+    path: PathBuf,
 }
 
 #[derive(Clone, Copy)]
@@ -701,18 +728,39 @@ pub fn create_editor(
     editor_state: Arc<EguiState>,
 ) -> Option<Box<dyn Editor>> {
     let initial_scale = params.ui_scale.value();
+    let initial_size = scaled_editor_size(ui_scale_factor(initial_scale));
+    persist_editor_size(&editor_state, initial_size);
+    let resize_state = editor_state.clone();
     create_egui_editor(
         editor_state,
         EditorUiState {
             last_ui_scale: initial_scale,
+            last_requested_size: initial_size,
+            factory_presets: load_factory_presets(),
+            selected_factory_preset: 0,
+            last_preset_status: None,
         },
         |_, _| {},
         move |egui_ctx, setter, state| {
             let ui_scale = params.ui_scale.value();
             let scale = ui_scale_factor(ui_scale);
-            if state.last_ui_scale != ui_scale {
+            let desired_size = scaled_editor_size(scale);
+
+            // NIH-plug's public resize hook for egui lives behind
+            // `ResizableWindow`, whose drag handle can call the wrapper's
+            // private `EguiState::set_requested_size()` queue. Programmatic UI
+            // scale changes cannot call that private queue directly, so keep the
+            // persisted `EguiState::size()` and egui viewport synchronized as a
+            // best-effort scale command while the wrapper below provides the
+            // official host-approved resize path.
+            if state.last_ui_scale != ui_scale
+                || state.last_requested_size != desired_size
+                || viewport_size_mismatch(egui_ctx, desired_size)
+            {
                 state.last_ui_scale = ui_scale;
-                let (width, height) = scaled_editor_size(scale);
+                state.last_requested_size = desired_size;
+                persist_editor_size(&resize_state, desired_size);
+                let (width, height) = desired_size;
                 egui_ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::vec2(
                     width as f32,
                     height as f32,
@@ -737,11 +785,16 @@ pub fn create_editor(
             egui_ctx.set_style(style);
             egui_ctx.set_visuals(egui::Visuals::dark());
 
-            egui::CentralPanel::default().show(egui_ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    render_ui(ui, &params, setter);
+            ResizableWindow::new("corrosion-editor-window")
+                .min_size(egui::vec2(
+                    (BASE_EDITOR_WIDTH as f32 * 0.5).round(),
+                    (BASE_EDITOR_HEIGHT as f32 * 0.5).round(),
+                ))
+                .show(egui_ctx, &resize_state, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        render_ui(ui, &params, setter, state);
+                    });
                 });
-            });
         },
     )
 }
@@ -764,12 +817,41 @@ fn scaled_editor_size(scale: f32) -> (u32, u32) {
     )
 }
 
-fn render_ui(ui: &mut egui::Ui, params: &CorrosionParams, setter: &ParamSetter) {
+fn persist_editor_size(editor_state: &Arc<EguiState>, size: (u32, u32)) {
+    let serialized = serde_json::json!({ "size": size });
+    if let Ok(state) = serde_json::from_value::<EguiState>(serialized) {
+        editor_state.set(state);
+    }
+}
+
+fn viewport_size_mismatch(egui_ctx: &egui::Context, desired_size: (u32, u32)) -> bool {
+    egui_ctx.input(|input| {
+        input
+            .viewport()
+            .inner_rect
+            .map(|rect| {
+                let current_size = (rect.width().round() as u32, rect.height().round() as u32);
+                !sizes_match(current_size, desired_size)
+            })
+            .unwrap_or(false)
+    })
+}
+
+fn sizes_match(current_size: (u32, u32), desired_size: (u32, u32)) -> bool {
+    current_size.0.abs_diff(desired_size.0) <= 1 && current_size.1.abs_diff(desired_size.1) <= 1
+}
+
+fn render_ui(
+    ui: &mut egui::Ui,
+    params: &CorrosionParams,
+    setter: &ParamSetter,
+    state: &mut EditorUiState,
+) {
     ui.heading("Corrosion");
     ui.label("Selection-specific control surface. The editor only shows the controls that belong to the active exciter and resonator.");
     ui.separator();
 
-    render_global(ui, params, setter);
+    render_global(ui, params, setter, state);
     ui.separator();
 
     ui.columns(3, |columns| {
@@ -779,7 +861,14 @@ fn render_ui(ui: &mut egui::Ui, params: &CorrosionParams, setter: &ParamSetter) 
     });
 }
 
-fn render_global(ui: &mut egui::Ui, params: &CorrosionParams, setter: &ParamSetter) {
+fn render_global(
+    ui: &mut egui::Ui,
+    params: &CorrosionParams,
+    setter: &ParamSetter,
+    state: &mut EditorUiState,
+) {
+    render_preset_loader(ui, params, setter, state);
+
     ui.horizontal(|ui| {
         combo_i32(
             ui,
@@ -799,6 +888,97 @@ fn render_global(ui: &mut egui::Ui, params: &CorrosionParams, setter: &ParamSett
         slider(ui, "Width", &params.width, -2.0, 3.0, setter);
         slider(ui, "Body", &params.body, 0.0, 5.0, setter);
     });
+}
+
+fn render_preset_loader(
+    ui: &mut egui::Ui,
+    params: &CorrosionParams,
+    setter: &ParamSetter,
+    state: &mut EditorUiState,
+) {
+    ui.horizontal(|ui| {
+        ui.label("Preset");
+        if state.factory_presets.is_empty() {
+            ui.label("No factory presets found");
+            return;
+        }
+
+        state.selected_factory_preset = state
+            .selected_factory_preset
+            .min(state.factory_presets.len().saturating_sub(1));
+        let selected_name = state.factory_presets[state.selected_factory_preset]
+            .name
+            .as_str();
+
+        egui::ComboBox::from_id_salt("factory-preset-loader")
+            .selected_text(selected_name)
+            .show_ui(ui, |ui| {
+                for (index, preset) in state.factory_presets.iter().enumerate() {
+                    if ui
+                        .selectable_label(index == state.selected_factory_preset, &preset.name)
+                        .clicked()
+                    {
+                        state.selected_factory_preset = index;
+                    }
+                }
+            });
+
+        if ui.button("Load").clicked() {
+            let entry = state.factory_presets[state.selected_factory_preset].clone();
+            match Preset::load(&entry.path) {
+                Ok(preset) => {
+                    apply_preset(params, setter, &preset);
+                    state.last_preset_status = Some(format!("Loaded {}", preset.name));
+                }
+                Err(error) => {
+                    state.last_preset_status =
+                        Some(format!("Failed to load {}: {error}", entry.name));
+                }
+            }
+        }
+    });
+
+    if let Some(status) = &state.last_preset_status {
+        ui.label(status);
+    }
+}
+
+fn apply_preset(params: &CorrosionParams, setter: &ParamSetter, preset: &Preset) {
+    setter.set_parameter(&params.object, preset.object.to_int());
+    setter.set_parameter(&params.exciter, preset.exciter);
+    setter.set_parameter(&params.size, preset.size);
+    setter.set_parameter(&params.rust, preset.rust);
+    setter.set_parameter(&params.damage, preset.damage);
+    setter.set_parameter(&params.drive, preset.drive);
+    setter.set_parameter(&params.output, preset.output);
+    setter.set_parameter(&params.width, preset.width);
+    setter.set_parameter(&params.body, preset.body);
+}
+
+fn load_factory_presets() -> Vec<FactoryPresetEntry> {
+    let preset_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("presets/factory");
+    let Ok(entries) = fs::read_dir(preset_dir) else {
+        return Vec::new();
+    };
+
+    let mut presets: Vec<_> = entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension == "corrosion-preset")
+        })
+        .filter_map(|path| {
+            Preset::load(&path).ok().map(|preset| FactoryPresetEntry {
+                name: preset.name,
+                path,
+            })
+        })
+        .collect();
+
+    presets.sort_by(|left, right| left.name.cmp(&right.name));
+    presets
 }
 
 fn render_exciter(ui: &mut egui::Ui, params: &CorrosionParams, setter: &ParamSetter) {
@@ -908,6 +1088,36 @@ fn render_exciter(ui: &mut egui::Ui, params: &CorrosionParams, setter: &ParamSet
         );
         slider(ui, "Curve", &params.curve_tension, -1.0, 1.0, setter);
     });
+}
+
+fn render_resonator(ui: &mut egui::Ui, params: &CorrosionParams, setter: &ParamSetter) {
+    ui.heading("Resonator");
+
+    let object = Object::from_int(params.object.value());
+    let object_items: Vec<(i32, &'static str)> = (0..=8)
+        .map(|value| (value, Object::from_int(value).name()))
+        .collect();
+    combo_i32(
+        ui,
+        "resonator-model",
+        "Model",
+        &params.object,
+        &object_items,
+        setter,
+    );
+
+    let panel = resonator_panel(object);
+    ui.collapsing(panel.title, |ui| {
+        ui.label(panel.description);
+        render_resonator_controls(ui, params, setter, panel.controls);
+    });
+
+    ui.collapsing("Material wear", |ui| {
+        slider(ui, "Rust", &params.rust, 0.0, 5.0, setter);
+        slider(ui, "Damage", &params.damage, 0.0, 10.0, setter);
+        slider(ui, "Heat", &params.heat, 0.0, 1.0, setter);
+        slider(ui, "Sludge", &params.sludge, 0.0, 1.0, setter);
+    });
 
     ui.collapsing("Interaction bus", |ui| {
         slider(
@@ -943,36 +1153,6 @@ fn render_exciter(ui: &mut egui::Ui, params: &CorrosionParams, setter: &ParamSet
             1.0,
             setter,
         );
-    });
-}
-
-fn render_resonator(ui: &mut egui::Ui, params: &CorrosionParams, setter: &ParamSetter) {
-    ui.heading("Resonator");
-
-    let object = Object::from_int(params.object.value());
-    let object_items: Vec<(i32, &'static str)> = (0..=8)
-        .map(|value| (value, Object::from_int(value).name()))
-        .collect();
-    combo_i32(
-        ui,
-        "resonator-model",
-        "Model",
-        &params.object,
-        &object_items,
-        setter,
-    );
-
-    let panel = resonator_panel(object);
-    ui.collapsing(panel.title, |ui| {
-        ui.label(panel.description);
-        render_resonator_controls(ui, params, setter, panel.controls);
-    });
-
-    ui.collapsing("Material wear", |ui| {
-        slider(ui, "Rust", &params.rust, 0.0, 5.0, setter);
-        slider(ui, "Damage", &params.damage, 0.0, 10.0, setter);
-        slider(ui, "Heat", &params.heat, 0.0, 1.0, setter);
-        slider(ui, "Sludge", &params.sludge, 0.0, 1.0, setter);
     });
 }
 
@@ -1136,7 +1316,7 @@ fn render_processing(ui: &mut egui::Ui, params: &CorrosionParams, setter: &Param
 fn exciter_panel(exciter: ExciterType) -> ExciterPanelSpec {
     match exciter {
         ExciterType::Bow => ExciterPanelSpec {
-            title: "The Bow (Smooth Stick-Slip)",
+            title: "Bow",
             description: "Smooth stick-slip bow friction with pressure, speed, grip, and slip controls from the documented bow model.",
             controls: BOW_CONTROLS,
         },
@@ -1423,16 +1603,36 @@ fn combo_i32(
 
 #[cfg(test)]
 mod tests {
-    use super::{exciter_panel, resonator_panel, scaled_editor_size, ui_scale_factor};
+    use super::{
+        exciter_panel, load_factory_presets, persist_editor_size, resonator_panel,
+        scaled_editor_size, sizes_match, ui_scale_factor,
+    };
     use crate::params::{exciter_model_items, ExciterType, Object};
+    use nih_plug_egui::EguiState;
 
     #[test]
     fn ui_scale_resizes_window_from_base_dimensions() {
-        assert_eq!(scaled_editor_size(ui_scale_factor(0)), (720, 512));
-        assert_eq!(scaled_editor_size(ui_scale_factor(1)), (1080, 768));
-        assert_eq!(scaled_editor_size(ui_scale_factor(2)), (1440, 1024));
-        assert_eq!(scaled_editor_size(ui_scale_factor(3)), (1800, 1280));
-        assert_eq!(scaled_editor_size(ui_scale_factor(4)), (2160, 1536));
+        assert_eq!(scaled_editor_size(ui_scale_factor(0)), (540, 384));
+        assert_eq!(scaled_editor_size(ui_scale_factor(1)), (810, 576));
+        assert_eq!(scaled_editor_size(ui_scale_factor(2)), (1080, 768));
+        assert_eq!(scaled_editor_size(ui_scale_factor(3)), (1350, 960));
+        assert_eq!(scaled_editor_size(ui_scale_factor(4)), (1620, 1152));
+    }
+
+    #[test]
+    fn viewport_resize_tolerates_rounding_noise_only() {
+        assert!(sizes_match((1079, 768), (1080, 768)));
+        assert!(sizes_match((1081, 769), (1080, 768)));
+        assert!(!sizes_match((1440, 1024), (1080, 768)));
+    }
+
+    #[test]
+    fn ui_scale_persists_host_facing_editor_size() {
+        let editor_state = EguiState::from_size(1080, 768);
+
+        persist_editor_size(&editor_state, scaled_editor_size(ui_scale_factor(1)));
+
+        assert_eq!(editor_state.size(), (810, 576));
     }
 
     #[test]
@@ -1451,7 +1651,7 @@ mod tests {
             .collect();
 
         assert_eq!(names[0], "Hand Strike");
-        assert!(names.contains(&"The Bow (Smooth Stick-Slip)"));
+        assert!(names.contains(&"Bow"));
         assert!(!names.contains(&"Hit"));
         assert!(!names.contains(&"Scrape"));
         assert!(!names.contains(&"Other"));
@@ -1465,5 +1665,14 @@ mod tests {
         assert_eq!(resonator_panel(Object::Pipe).controls.len(), 3);
         assert_eq!(resonator_panel(Object::Tank).controls.len(), 4);
         assert_eq!(resonator_panel(Object::IndustrialCog).controls.len(), 3);
+    }
+
+    #[test]
+    fn factory_preset_loader_finds_factory_bank() {
+        let presets = load_factory_presets();
+
+        assert_eq!(presets.len(), 60);
+        assert_eq!(presets[0].name, "Anchored Tank Moan");
+        assert_eq!(presets[59].name, "Worn Chain Hail");
     }
 }

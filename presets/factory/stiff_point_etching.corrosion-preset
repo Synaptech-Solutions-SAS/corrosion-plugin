@@ -1,0 +1,13 @@
+{
+  "name": "Stiff Point Etching",
+  "version": "3",
+  "object": "CoilSpring",
+  "exciter": 16,
+  "size": 2.3212,
+  "rust": 3.4929,
+  "damage": 5.7121,
+  "drive": 1.6121,
+  "output": 0.4551,
+  "width": 0.6,
+  "body": 2.0364
+}

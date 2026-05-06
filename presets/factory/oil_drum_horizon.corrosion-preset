@@ -1,0 +1,13 @@
+{
+  "name": "Oil Drum Horizon",
+  "version": "3",
+  "object": "CoilSpring",
+  "exciter": 4,
+  "size": 1.4545,
+  "rust": 1.804,
+  "damage": 2.8232,
+  "drive": 0.3677,
+  "output": 0.7379,
+  "width": -0.3778,
+  "body": 0.6141
+}

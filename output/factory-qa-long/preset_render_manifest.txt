@@ -1,0 +1,2 @@
+sample_rate=48000 duration=0.15 note=60 velocity=127 frame_count=7200 preset_count=1
+preset=taut_wire_alarm.corrosion-preset name="Taut Wire Alarm" object=Taut Cable exciter=4 wav=output/factory-qa-long/taut_wire_alarm.wav peak=0.966100 rms=0.965249 checksum=13463621342330304702 brightness=0.000139 roughness=0.000000 late_to_early=3.019022 zero_crossings=0

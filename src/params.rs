@@ -134,8 +134,9 @@ pub struct CorrosionParams {
     #[id = "body"]
     pub body: FloatParam,
 
-    /// UI scale factor (0-4 mapping to 50%, 75%, 100%, 125%, 150%)
-    /// Only affects the editor GUI size
+    /// UI scale factor (0-4 mapping to 50%, 75%, 100%, 125%, 150%).
+    /// The 100% editor baseline is the compact 1080x768 logical window.
+    /// Only affects the editor GUI size.
     #[id = "ui_scale"]
     pub ui_scale: IntParam,
 
@@ -744,7 +745,7 @@ impl ExciterType {
     /// Static string slice with display name
     pub fn name(self) -> &'static str {
         match self {
-            ExciterType::Bow => "The Bow (Smooth Stick-Slip)",
+            ExciterType::Bow => "Bow",
             ExciterType::HandStrike => "Hand Strike",
             ExciterType::FeltMallet => "Felt Mallet",
             ExciterType::HardMallet => "Hard Mallet",
@@ -846,7 +847,7 @@ pub fn exciter_model_items() -> &'static [(i32, &'static str)] {
         (6, "Wire Brush"),
         (7, "Metal Pipe"),
         (8, "Metal Chain"),
-        (1, "The Bow (Smooth Stick-Slip)"),
+        (1, "Bow"),
         (9, "Stiff Point Scrape"),
         (10, "Heavy Grinding"),
         (11, "Corrugated Drag"),
@@ -1002,7 +1003,7 @@ impl Default for CorrosionParams {
     fn default() -> Self {
         Self {
             #[cfg(feature = "gui")]
-            editor_state: EguiState::from_size(1440, 1024),
+            editor_state: EguiState::from_size(1080, 768),
 
             // Sound generation defaults
             exciter: exciter_param(ExciterType::HandStrike.to_int()),
