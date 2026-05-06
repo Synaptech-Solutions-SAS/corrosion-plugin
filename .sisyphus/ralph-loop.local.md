@@ -1,13 +1,14 @@
 ---
 active: true
-iteration: 5
+iteration: 1
 max_iterations: 500
-completion_promise: "DONE"
+completion_promise: "VERIFIED"
 initial_completion_promise: "DONE"
-started_at: "2026-05-06T16:15:01.116Z"
-session_id: "ses_20501b843ffeFQ4Sc4T5jZ100Y"
+started_at: "2026-05-06T21:26:32.219Z"
+session_id: "ses_2011fb9fdffe6im5km50qgK4Kp"
 ultrawork: true
+verification_pending: true
 strategy: "continue"
-message_count_at_start: 325
+message_count_at_start: 43
 ---
-Create 60 different creative presets in the preset/factory folder and after that check if the preset seleccion is implemented and displayed in the ui
+Another issue, when I try to crank up or down any knob it jumps back and forth and does move where i want it. Clicking it and  sliding up should increase the value and clickig and sliding down should decrease it
