@@ -4,7 +4,7 @@
 //! against a moving surface. The math integrates relative motion into a stored
 //! deflection term and then converts it back into chatter force.
 //! Use it for squeaks, tiny slips, and high-frequency scraping chatter inside
-//! the `dsp/exciters` scrape family.
+//! the `dsp/exciters` friction family.
 
 /// Rigid-point scrape model with snap-back chatter.
 #[derive(Clone, Debug)]

@@ -55,13 +55,11 @@ fn render_config_from_args(args: &Args) -> Result<RenderConfig, Box<dyn std::err
         return Err("duration and sample_rate resulted in zero frames".into());
     }
     if args.excitation_frame >= frame_count {
-        return Err(
-            format!(
-                "excitation_frame ({}) must be smaller than frame_count ({frame_count})",
-                args.excitation_frame
-            )
-            .into(),
-        );
+        return Err(format!(
+            "excitation_frame ({}) must be smaller than frame_count ({frame_count})",
+            args.excitation_frame
+        )
+        .into());
     }
 
     Ok(RenderConfig {

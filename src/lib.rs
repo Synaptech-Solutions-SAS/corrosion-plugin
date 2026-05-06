@@ -38,7 +38,7 @@
 //! ## Audio Signal Flow
 //!
 //! 1. **MIDI Input** → Note events trigger voice allocation in `VoiceManager`
-//! 2. **Excitation** → Selected exciter (Hit/Scrape/Specialty) generates force
+//! 2. **Excitation** → Selected exciter model generates force
 //! 3. **Resonator** → Modal resonator filters excitation into pitched sound
 //! 4. **Voice Mixing** → Active voices are summed with polyphony limit
 //! 5. **Post-Processing** → Global effects chain processes mixed output
@@ -88,7 +88,7 @@ pub use params::{CorrosionParams, Object};
 pub use presets::Preset;
 
 /// Output limiter threshold to prevent clipping and ensure headroom.
-/// 
+///
 /// Set slightly below 1.0 (0.9661) to allow for inter-sample peaks
 /// and provide safety margin for downstream processing.
 pub const LIMITER_THRESHOLD: f32 = 0.9661;
@@ -105,8 +105,9 @@ pub const LIMITER_THRESHOLD: f32 = 0.9661;
 /// Limited sample value within safe output range
 ///
 /// # Example
-/// ```
-/// let limited = apply_output_limiter(1.5); // Returns 0.9661
+/// ```rust
+/// let limited = corrotion::apply_output_limiter(1.5);
+/// assert_eq!(limited, corrotion::LIMITER_THRESHOLD);
 /// ```
 #[inline]
 pub fn apply_output_limiter(sample: f32) -> f32 {
@@ -223,7 +224,7 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
                 Object::SheetMetal => dsp::ModalProfileId::SheetMetal,
                 Object::IndustrialCog => dsp::ModalProfileId::IndustrialCog,
             };
-            
+
             // Collect all current parameter values into VoiceControls struct
             // This bundles parameters that need to be passed to the voice
             let controls = VoiceControls {
@@ -249,6 +250,65 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
                 exciter_pressure: plugin.params.exciter_pressure.value(),
                 exciter_speed: plugin.params.exciter_speed.value(),
                 exciter_roughness: plugin.params.exciter_roughness.value(),
+                hand_mass: plugin.params.hand_mass.value(),
+                flesh_stiffness: plugin.params.flesh_stiffness.value(),
+                flesh_damping: plugin.params.flesh_damping.value(),
+                mute_decay: plugin.params.mute_decay.value(),
+                mallet_mass: plugin.params.mallet_mass.value(),
+                felt_softness: plugin.params.felt_softness.value(),
+                core_hardness: plugin.params.core_hardness.value(),
+                compression_curve: plugin.params.compression_curve.value(),
+                material_stiffness: plugin.params.material_stiffness.value(),
+                impact_damping: plugin.params.impact_damping.value(),
+                stick_mass: plugin.params.stick_mass.value(),
+                tip_stiffness: plugin.params.tip_stiffness.value(),
+                restitution_bounciness: plugin.params.restitution_bounciness.value(),
+                micro_bounce_limit: plugin.params.micro_bounce_limit.value(),
+                wire_density: plugin.params.wire_density.value(),
+                spread_duration: plugin.params.spread_duration.value(),
+                brush_wire_stiffness: plugin.params.brush_wire_stiffness.value(),
+                amplitude_randomization: plugin.params.amplitude_randomization.value(),
+                pipe_mass: plugin.params.pipe_mass.value(),
+                metal_stiffness: plugin.params.metal_stiffness.value(),
+                pipe_pitch: plugin.params.pipe_pitch.value(),
+                pipe_ring_decay: plugin.params.pipe_ring_decay.value(),
+                link_count: plugin.params.link_count.value(),
+                chain_mass: plugin.params.chain_mass.value(),
+                drop_envelope_spread: plugin.params.drop_envelope_spread.value(),
+                internal_rattle: plugin.params.internal_rattle.value(),
+                rattle_color: plugin.params.rattle_color.value(),
+                bow_pressure: plugin.params.bow_pressure.value(),
+                bow_speed: plugin.params.bow_speed.value(),
+                rosin_grip: plugin.params.rosin_grip.value(),
+                slip_curve: plugin.params.slip_curve.value(),
+                scrape_speed: plugin.params.scrape_speed.value(),
+                point_pressure: plugin.params.point_pressure.value(),
+                chatter_pitch: plugin.params.chatter_pitch.value(),
+                chatter_damping: plugin.params.chatter_damping.value(),
+                grind_speed: plugin.params.grind_speed.value(),
+                grind_pressure: plugin.params.grind_pressure.value(),
+                surface_grit: plugin.params.surface_grit.value(),
+                grit_color: plugin.params.grit_color.value(),
+                drag_speed: plugin.params.drag_speed.value(),
+                ridge_spacing: plugin.params.ridge_spacing.value(),
+                ridge_depth: plugin.params.ridge_depth.value(),
+                drag_exciter_mass: plugin.params.drag_exciter_mass.value(),
+                pull_speed: plugin.params.pull_speed.value(),
+                break_threshold: plugin.params.break_threshold.value(),
+                slip_stochasticity: plugin.params.slip_stochasticity.value(),
+                creak_sharpness: plugin.params.creak_sharpness.value(),
+                air_pressure: plugin.params.air_pressure.value(),
+                nozzle_width: plugin.params.nozzle_width.value(),
+                turbulence_chaos: plugin.params.turbulence_chaos.value(),
+                mains_frequency: plugin.params.mains_frequency.value(),
+                coil_proximity: plugin.params.coil_proximity.value(),
+                voltage_sag: plugin.params.voltage_sag.value(),
+                pull_distance: plugin.params.pull_distance.value(),
+                hook_stiffness: plugin.params.hook_stiffness.value(),
+                snap_force: plugin.params.snap_force.value(),
+                flow_rate: plugin.params.flow_rate.value(),
+                particle_mass: plugin.params.particle_mass.value(),
+                mass_variance: plugin.params.mass_variance.value(),
                 strike_position: plugin.params.strike_position.value(),
                 coupling_stiffness: plugin.params.coupling_stiffness.value(),
                 position_wander: plugin.params.position_wander.value(),
@@ -260,10 +320,10 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
                 heat: plugin.params.heat.value(),
                 sludge: plugin.params.sludge.value(),
             };
-            
+
             // Get the selected exciter type (0-16 for different exciters)
             let exciter_type = plugin.params.exciter.value();
-            
+
             // Trigger note-on in voice manager with all parameters
             // The voice manager handles polyphony and voice allocation
             plugin.voice_manager.note_on_with_controls(
@@ -316,7 +376,7 @@ fn process_pending_events<F>(
 
         // Handle the current event
         handle_note_event(plugin, event);
-        
+
         // Fetch the next event from the host
         *next_event = fetch_next();
     }
@@ -343,10 +403,10 @@ pub fn corrosion_version() -> &'static str {
 pub struct Corrosion {
     /// Shared parameter storage - Arc allows sharing with GUI thread
     params: Arc<CorrosionParams>,
-    
+
     /// Voice manager handles polyphony, voice allocation, and voice stealing
     voice_manager: VoiceManager,
-    
+
     /// Post-processing chain applies global effects to mixed output
     post_chain: dsp::PostProcessingChain,
 }
@@ -395,8 +455,8 @@ impl Plugin for Corrosion {
 
     /// Audio I/O configuration - stereo output, no input
     const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
-        main_input_channels: None,  // No audio input (instrument)
-        main_output_channels: NonZeroU32::new(2),  // Stereo output
+        main_input_channels: None,                // No audio input (instrument)
+        main_output_channels: NonZeroU32::new(2), // Stereo output
         aux_input_ports: &[],
         aux_output_ports: &[],
         names: PortNames::const_default(),
@@ -407,7 +467,7 @@ impl Plugin for Corrosion {
 
     /// No SysEx message support
     type SysExMessage = ();
-    
+
     /// No background tasks
     type BackgroundTask = ();
 
@@ -503,7 +563,7 @@ impl Plugin for Corrosion {
                 self.params.spread_width.value(),
                 self.params.listener_proximity.value(),
             );
-            
+
             // Map space mode integer to enum
             let space_mode = match self.params.space_mode.value() {
                 0 => dsp::SpaceMode::Off,
@@ -708,6 +768,6 @@ impl Vst3Plugin for Corrosion {
         &[Vst3SubCategory::Instrument, Vst3SubCategory::Synth];
 }
 
-/// Export plugin entry points for CLAP and VST3 hosts
+// Export plugin entry points for CLAP and VST3 hosts.
 nih_export_clap!(Corrosion);
 nih_export_vst3!(Corrosion);

@@ -17,7 +17,7 @@ fn preset_roundtrip_save_and_load() {
         name: "Iron Strike".to_string(),
         version: PRESET_VERSION.to_string(),
         object: Object::Pipe,
-        exciter: 0,
+        exciter: 2,
         size: 1.0,
         rust: 0.3,
         damage: 0.1,
@@ -36,10 +36,10 @@ fn preset_roundtrip_save_and_load() {
 }
 
 #[test]
-fn legacy_preset_loads_with_default_extended_parameters() {
+fn version_1_preset_loads_with_default_extended_parameters() {
     let json = r#"
     {
-        "name": "Legacy Iron Strike",
+        "name": "Iron Strike",
         "version": "1",
         "object": "Pipe",
         "exciter": 0,
@@ -54,7 +54,7 @@ fn legacy_preset_loads_with_default_extended_parameters() {
     "#;
 
     let preset: Preset = serde_json::from_str(json).unwrap();
-    assert_eq!(preset.name, "Legacy Iron Strike");
+    assert_eq!(preset.name, "Iron Strike");
     assert_eq!(preset.extra, PresetParameters::default());
 }
 
@@ -79,6 +79,10 @@ fn expanded_parameters_roundtrip() {
     preset.extra.space_amount = 0.8;
     preset.extra.analog_ceiling = 0.7;
     preset.extra.diode_softness = 0.9;
+    preset.extra.hand_mass = 2.4;
+    preset.extra.pipe_ring_decay = 0.991;
+    preset.extra.ridge_spacing = 0.08;
+    preset.extra.flow_rate = 2.2;
 
     let path = unique_temp_path("expanded_roundtrip");
     preset.save(&path).unwrap();
@@ -92,5 +96,9 @@ fn expanded_parameters_roundtrip() {
     assert_eq!(params.space_amount.value(), 0.8);
     assert_eq!(params.analog_ceiling.value(), 0.7);
     assert_eq!(params.diode_softness.value(), 0.9);
+    assert_eq!(params.hand_mass.value(), 2.4);
+    assert_eq!(params.pipe_ring_decay.value(), 0.991);
+    assert_eq!(params.ridge_spacing.value(), 0.08);
+    assert_eq!(params.flow_rate.value(), 2.2);
     let _ = fs::remove_file(path);
 }

@@ -5,45 +5,40 @@
 //! the voice layer. The voice module owns note lifecycle and sample-rate
 //! processing; these types provide the per-note DSP building blocks.
 
-pub mod body;
-pub mod budget;
-pub mod deterministic_excitation;
+pub mod envelopes;
 pub mod exciters;
-pub mod expanded_resonators;
 pub mod interaction;
-pub mod mseg;
 pub mod post_processing;
 pub mod profile;
-pub mod resonator;
+pub mod profiles;
+pub mod resonators;
 pub mod transforms;
+pub mod utils;
 
-pub use body::BodyResonator;
-pub use budget::{
-    offline_peak_shared_mode_limit, realtime_mode_count_estimate, realtime_mode_count_estimates,
-    safe_realtime_shared_mode_limit, RealtimeModeCountEstimate,
-};
-pub use deterministic_excitation::ExcitationInput;
+pub use envelopes::{LoopMode, Stage, MSEG};
 pub use exciters::{
-    CorrugatedDrag, Drumstick, ElectromagneticHum, Exciter, FeltMallet, HandStrike, HardMallet,
-    HeavyGrinding, MetalChain, MetalPipe, ParticleRain, PneumaticJet, ScrapeExciter,
-    StiffPointScrape, TensionRise, TensionSnap, WireBrush,
-};
-pub use expanded_resonators::{
-    CoilSpringResonator, IBeamResonator, IndustrialCogResonator, SheetMetalResonator,
-    TautCableResonator,
+    BowExciter, CorrugatedDrag, Drumstick, ElectromagneticHum, FeltMallet, HandStrike, HardMallet,
+    HeavyGrinding, MetalChain, MetalPipe, ParticleRain, PneumaticJet, StiffPointScrape,
+    TensionRise, TensionSnap, WireBrush,
 };
 pub use interaction::{
     mode_coefficient_1d, mode_coefficient_2d, BidirectionalInteractionBus, InteractionState,
 };
-pub use mseg::{LoopMode, Stage, MSEG};
 pub use post_processing::{
     FactoryReverb, FemBodyResonator, HrtfSpread, LorenzDrive, OversampledClipper,
     PostProcessingChain, SpaceMode, SpringReverb, WdfLadderFilter,
 };
 pub use profile::{ModalModeSpec, ModalProfile, ModalProfileId};
-pub use resonator::{ModalResonator, ResonatorCoefficients, ResonatorCore, SecondOrderMode};
+pub use resonators::{
+    CoilSpringResonator, IBeamResonator, IndustrialCogResonator, ModalResonator,
+    ResonatorCoefficients, ResonatorCore, SecondOrderMode, SheetMetalResonator, TautCableResonator,
+};
 pub use transforms::{
     DamageAmount, HeatAmount, RustAmount, SizeScale, SludgeAmount, ThicknessAmount,
+};
+pub use utils::{
+    offline_peak_shared_mode_limit, realtime_mode_count_estimate, realtime_mode_count_estimates,
+    safe_realtime_shared_mode_limit, BodyResonator, ExcitationInput, RealtimeModeCountEstimate,
 };
 
 pub use crate::offline::{

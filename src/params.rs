@@ -9,7 +9,7 @@
 //! The 70+ parameters are organized into logical groups:
 //!
 //! ### Sound Generation
-//! - **Exciter** (exciter) - Type of excitation (Hit/Scrape/Specialty variants)
+//! - **Exciter** (exciter) - Type of excitation model
 //! - **Object** (object) - Resonator object type (Pipe, Plate, Tank, etc.)
 //!
 //! ### Object Transformations
@@ -19,17 +19,17 @@
 //!
 //! ### Exciter Controls
 //! - **Pressure** (exciter_pressure) - Force of excitation
-//! - **Speed** (exciter_speed) - Velocity for scrape-type exciters
+//! - **Speed** (exciter_speed) - Velocity for friction exciters
 //! - **Roughness** (exciter_roughness) - Surface texture and grit
 //!
 //! ### Envelope Generators
-//! Standard ADSR for Hit/Specialty exciters:
+//! Standard ADSR for impact/specialty exciters:
 //! - **Attack** (env_attack) - Time to reach peak (0.001s - 2s)
 //! - **Decay** (env_decay) - Time to reach sustain (0.01s - 5s)
 //! - **Sustain** (env_sustain) - Hold level (0.0 - 1.0)
 //! - **Release** (env_release) - Time to silence (0.01s - 5s)
 //!
-//! MSEG (Multistage Envelope) for Scrape exciters:
+//! MSEG (Multistage Envelope) for friction exciters:
 //! - **Onset, Attack, Hold, Decay, Sustain, Release** - 6-stage envelope
 //! - **Loop Mode** - Off, Forward, PingPong (partial)
 //!
@@ -58,9 +58,10 @@
 //! Parameters are accessed via the `CorrosionParams` struct which implements
 //! nih_plug's `Params` trait for host integration:
 //!
-//! ```rust
-//! let cutoff = plugin.params.filter_cutoff.value();
-//! let exciter_type = plugin.params.exciter.value();
+//! ```ignore
+//! let params = plugin.params();
+//! let cutoff = params.filter_cutoff.value();
+//! let exciter_type = params.exciter.value();
 //! ```
 
 use nih_plug::prelude::*;
@@ -84,345 +85,570 @@ pub struct CorrosionParams {
     #[cfg(feature = "gui")]
     #[persist = "editor-state"]
     pub editor_state: Arc<EguiState>,
-    
+
     /// Exciter type selection (0-16 mapping to ExciterType enum)
     /// Controls the type of physical excitation (mallets, scrapes, specialty)
     #[id = "exciter"]
     pub exciter: IntParam,
-    
+
     /// Resonator object type (0-8 mapping to Object enum)
     /// Determines the modal characteristics (pipe vs plate vs tank, etc.)
     #[id = "object"]
     pub object: IntParam,
-    
+
     /// Object size scale (0.05 to 10.0)
     /// Affects pitch (inverse) and decay time (direct)
     /// Higher values = larger object = lower pitch, longer decay
     #[id = "size"]
     pub size: FloatParam,
-    
+
     /// Rust amount (0.0 to 5.0)
     /// Simulates corrosion that damps high frequencies
     /// Higher values = duller, more muted sound
     #[id = "rust"]
     pub rust: FloatParam,
-    
+
     /// Damage amount (0.0 to 10.0)
     /// Structural damage introducing non-linear rattle and buzzing
     /// Higher values = more industrial chaos
     #[id = "damage"]
     pub damage: FloatParam,
-    
+
     /// Output drive/saturation (0.0 to 5.0)
     /// Asymmetric waveshaping for industrial character
     #[id = "drive"]
     pub drive: FloatParam,
-    
+
     /// Master output gain in dB (mapped to linear 0.0 to +40dB)
     /// Final stage before the limiter
     #[id = "output"]
     pub output: FloatParam,
-    
+
     /// Stereo width/spread (-2.0 to 3.0)
     /// Controls stereo field expansion in post-processing
     #[id = "width"]
     pub width: FloatParam,
-    
+
     /// Body resonance amount (0.0 to 5.0)
     /// Physical cabinet/body resonance simulation
     #[id = "body"]
     pub body: FloatParam,
-    
+
     /// UI scale factor (0-4 mapping to 50%, 75%, 100%, 125%, 150%)
     /// Only affects the editor GUI size
     #[id = "ui_scale"]
     pub ui_scale: IntParam,
-    
-    // ADSR Envelope Parameters (for Hit and Specialty exciters)
-    
+
+    // ADSR Envelope Parameters (for impact and specialty exciters)
     /// Envelope attack time in seconds (0.001 to 2.0)
     /// Time from zero to peak level
     #[id = "env_attack"]
     pub env_attack: FloatParam,
-    
+
     /// Envelope decay time in seconds (0.01 to 5.0)
     /// Time from peak to sustain level
     #[id = "env_decay"]
     pub env_decay: FloatParam,
-    
+
     /// Envelope sustain level (0.0 to 1.0)
     /// Hold level while note is active
     #[id = "env_sustain"]
     pub env_sustain: FloatParam,
-    
+
     /// Envelope release time in seconds (0.01 to 5.0)
     /// Time from sustain to silence after note-off
     #[id = "env_release"]
     pub env_release: FloatParam,
-    
-    // MSEG (Multistage Envelope) Parameters (for Scrape exciters)
-    
+
+    // MSEG (Multistage Envelope) Parameters (for friction exciters)
     /// MSEG onset time - initial transient stage (0.001 to 1.0s)
     #[id = "mseg_onset"]
     pub mseg_onset: FloatParam,
-    
+
     /// MSEG attack time - main rise stage (0.001 to 2.0s)
     #[id = "mseg_attack"]
     pub mseg_attack: FloatParam,
-    
+
     /// MSEG hold time - peak hold stage (0.0 to 2.0s)
     #[id = "mseg_hold"]
     pub mseg_hold: FloatParam,
-    
+
     /// MSEG decay time - fall to sustain (0.01 to 5.0s)
     #[id = "mseg_decay"]
     pub mseg_decay: FloatParam,
-    
+
     /// MSEG sustain level (0.0 to 1.0)
     #[id = "mseg_sustain"]
     pub mseg_sustain: FloatParam,
-    
+
     /// MSEG release time (0.01 to 5.0s)
     #[id = "mseg_release"]
     pub mseg_release: FloatParam,
-    
+
     // Envelope Modulation
-    
     /// Envelope amount - scales envelope influence on excitation (0.0 to 1.0)
     #[id = "env_amount"]
     pub env_amount: FloatParam,
-    
+
     /// Velocity to peak amount - how much velocity affects envelope peak (0.0 to 1.0)
     #[id = "velocity_to_peak"]
     pub velocity_to_peak: FloatParam,
-    
+
     /// Loop mode for MSEG (0=Off, 1=Forward, 2=PingPong)
     #[id = "loop_mode"]
     pub loop_mode: IntParam,
-    
+
     /// Loop start stage (0-5, default 3=Decay)
     #[id = "loop_start_stage"]
     pub loop_start_stage: IntParam,
-    
+
     /// Loop end stage (0-5, default 4=Sustain)
     #[id = "loop_end_stage"]
     pub loop_end_stage: IntParam,
-    
+
     /// Sync rate for tempo-synced parameters (0.0 to 1.0)
     #[id = "sync_rate"]
     pub sync_rate: FloatParam,
-    
+
     /// Global time scale multiplier (0.1 to 10.0)
     /// Scales all envelope times proportionally
     #[id = "global_time_scale"]
     pub global_time_scale: FloatParam,
-    
+
     /// Velocity to envelope level amount (0.0 to 1.0)
     #[id = "velocity_to_level"]
     pub velocity_to_level: FloatParam,
-    
+
     /// Velocity to envelope time amount (0.0 to 1.0)
     /// Higher velocities = shorter times
     #[id = "velocity_to_time"]
     pub velocity_to_time: FloatParam,
-    
+
     /// Curve tension for envelope stages (-1.0 to 1.0)
     /// Negative = exponential, 0 = linear, positive = logarithmic
     #[id = "curve_tension"]
     pub curve_tension: FloatParam,
-    
+
     // Exciter Controls
-    
     /// Exciter pressure/force (0.0 to 1.0)
     /// Overall intensity of excitation
     #[id = "exciter_pressure"]
     pub exciter_pressure: FloatParam,
-    
+
     /// Exciter speed (0.0 to 1.0)
-    /// Velocity for scrape-type exciters (bow, scrape, drag)
+    /// Velocity for friction exciters (bow, point, grind, drag)
     #[id = "exciter_speed"]
     pub exciter_speed: FloatParam,
-    
+
     /// Exciter roughness (0.0 to 1.0)
     /// Surface texture - affects grit, chatter, and friction
     #[id = "exciter_roughness"]
     pub exciter_roughness: FloatParam,
-    
+
+    // Dedicated Exciter Algorithm Parameters
+    /// Hand strike force multiplier.
+    #[id = "hand_mass"]
+    pub hand_mass: FloatParam,
+
+    /// Hand strike spring stiffness for the initial contact transient.
+    #[id = "flesh_stiffness"]
+    pub flesh_stiffness: FloatParam,
+
+    /// Hand strike damping that absorbs high-frequency motion.
+    #[id = "flesh_damping"]
+    pub flesh_damping: FloatParam,
+
+    /// Hand strike decay back to rest after the impact.
+    #[id = "mute_decay"]
+    pub mute_decay: FloatParam,
+
+    /// Shared mass control used by the felt and hard mallet models.
+    #[id = "mallet_mass"]
+    pub mallet_mass: FloatParam,
+
+    /// Felt mallet low-velocity softness term.
+    #[id = "felt_softness"]
+    pub felt_softness: FloatParam,
+
+    /// Felt mallet hard-core stiffness multiplier.
+    #[id = "core_hardness"]
+    pub core_hardness: FloatParam,
+
+    /// Felt mallet polynomial compression exponent.
+    #[id = "compression_curve"]
+    pub compression_curve: FloatParam,
+
+    /// Hard mallet stiffness term controlling strike brightness.
+    #[id = "material_stiffness"]
+    pub material_stiffness: FloatParam,
+
+    /// Hard mallet damping that suppresses secondary bounces.
+    #[id = "impact_damping"]
+    pub impact_damping: FloatParam,
+
+    /// Drumstick effective mass.
+    #[id = "stick_mass"]
+    pub stick_mass: FloatParam,
+
+    /// Drumstick tip stiffness controlling bite.
+    #[id = "tip_stiffness"]
+    pub tip_stiffness: FloatParam,
+
+    /// Drumstick rebound energy retained after contact.
+    #[id = "restitution_bounciness"]
+    pub restitution_bounciness: FloatParam,
+
+    /// Drumstick maximum number of micro-bounces.
+    #[id = "micro_bounce_limit"]
+    pub micro_bounce_limit: FloatParam,
+
+    /// Wire brush impulse density.
+    #[id = "wire_density"]
+    pub wire_density: FloatParam,
+
+    /// Wire brush spread window in milliseconds.
+    #[id = "spread_duration"]
+    pub spread_duration: FloatParam,
+
+    /// Wire brush stiffness filter control.
+    #[id = "brush_wire_stiffness"]
+    pub brush_wire_stiffness: FloatParam,
+
+    /// Wire brush amplitude variance between individual wires.
+    #[id = "amplitude_randomization"]
+    pub amplitude_randomization: FloatParam,
+
+    /// Metal pipe exciter mass.
+    #[id = "pipe_mass"]
+    pub pipe_mass: FloatParam,
+
+    /// Metal pipe contact stiffness.
+    #[id = "metal_stiffness"]
+    pub metal_stiffness: FloatParam,
+
+    /// Metal pipe internal ringing pitch shift.
+    #[id = "pipe_pitch"]
+    pub pipe_pitch: FloatParam,
+
+    /// Metal pipe internal ring decay.
+    #[id = "pipe_ring_decay"]
+    pub pipe_ring_decay: FloatParam,
+
+    /// Metal chain link count.
+    #[id = "link_count"]
+    pub link_count: FloatParam,
+
+    /// Metal chain per-link mass.
+    #[id = "chain_mass"]
+    pub chain_mass: FloatParam,
+
+    /// Metal chain impact spread in milliseconds.
+    #[id = "drop_envelope_spread"]
+    pub drop_envelope_spread: FloatParam,
+
+    /// Metal chain internal rattle gain.
+    #[id = "internal_rattle"]
+    pub internal_rattle: FloatParam,
+
+    /// Metal chain rattle color / high-pass emphasis.
+    #[id = "rattle_color"]
+    pub rattle_color: FloatParam,
+
+    /// Bow friction force.
+    #[id = "bow_pressure"]
+    pub bow_pressure: FloatParam,
+
+    /// Bow motion speed.
+    #[id = "bow_speed"]
+    pub bow_speed: FloatParam,
+
+    /// Bow rosin grip / static friction amount.
+    #[id = "rosin_grip"]
+    pub rosin_grip: FloatParam,
+
+    /// Bow slip curve shaping.
+    #[id = "slip_curve"]
+    pub slip_curve: FloatParam,
+
+    /// Stiff point drag speed.
+    #[id = "scrape_speed"]
+    pub scrape_speed: FloatParam,
+
+    /// Stiff point contact pressure.
+    #[id = "point_pressure"]
+    pub point_pressure: FloatParam,
+
+    /// Stiff point chatter pitch / stiffness.
+    #[id = "chatter_pitch"]
+    pub chatter_pitch: FloatParam,
+
+    /// Stiff point chatter damping.
+    #[id = "chatter_damping"]
+    pub chatter_damping: FloatParam,
+
+    /// Grinding drag speed.
+    #[id = "grind_speed"]
+    pub grind_speed: FloatParam,
+
+    /// Grinding baseline pressure.
+    #[id = "grind_pressure"]
+    pub grind_pressure: FloatParam,
+
+    /// Grinding surface grit / tearing-noise ratio.
+    #[id = "surface_grit"]
+    pub surface_grit: FloatParam,
+
+    /// Grinding noise color.
+    #[id = "grit_color"]
+    pub grit_color: FloatParam,
+
+    /// Corrugated drag speed.
+    #[id = "drag_speed"]
+    pub drag_speed: FloatParam,
+
+    /// Corrugated ridge spacing.
+    #[id = "ridge_spacing"]
+    pub ridge_spacing: FloatParam,
+
+    /// Corrugated ridge depth.
+    #[id = "ridge_depth"]
+    pub ridge_depth: FloatParam,
+
+    /// Corrugated drag effective exciter mass.
+    #[id = "drag_exciter_mass"]
+    pub drag_exciter_mass: FloatParam,
+
+    /// Tension-rise pull speed.
+    #[id = "pull_speed"]
+    pub pull_speed: FloatParam,
+
+    /// Tension-rise slip threshold.
+    #[id = "break_threshold"]
+    pub break_threshold: FloatParam,
+
+    /// Tension-rise random threshold jitter.
+    #[id = "slip_stochasticity"]
+    pub slip_stochasticity: FloatParam,
+
+    /// Tension-rise slip sharpness / filtering.
+    #[id = "creak_sharpness"]
+    pub creak_sharpness: FloatParam,
+
+    /// Pneumatic jet pressure / drive.
+    #[id = "air_pressure"]
+    pub air_pressure: FloatParam,
+
+    /// Pneumatic jet nozzle width / resonance focus.
+    #[id = "nozzle_width"]
+    pub nozzle_width: FloatParam,
+
+    /// Pneumatic jet turbulence non-linearity.
+    #[id = "turbulence_chaos"]
+    pub turbulence_chaos: FloatParam,
+
+    /// Electromagnetic hum mains frequency.
+    #[id = "mains_frequency"]
+    pub mains_frequency: FloatParam,
+
+    /// Electromagnetic hum coupling / proximity.
+    #[id = "coil_proximity"]
+    pub coil_proximity: FloatParam,
+
+    /// Electromagnetic hum harmonic sag / distortion.
+    #[id = "voltage_sag"]
+    pub voltage_sag: FloatParam,
+
+    /// Tension snap pull distance.
+    #[id = "pull_distance"]
+    pub pull_distance: FloatParam,
+
+    /// Tension snap hook stiffness.
+    #[id = "hook_stiffness"]
+    pub hook_stiffness: FloatParam,
+
+    /// Tension snap release force threshold.
+    #[id = "snap_force"]
+    pub snap_force: FloatParam,
+
+    /// Particle rain spawn density.
+    #[id = "flow_rate"]
+    pub flow_rate: FloatParam,
+
+    /// Particle rain particle mass.
+    #[id = "particle_mass"]
+    pub particle_mass: FloatParam,
+
+    /// Particle rain mass randomization.
+    #[id = "mass_variance"]
+    pub mass_variance: FloatParam,
+
     // Interaction Parameters
-    
     /// Strike position on resonator (0.0 to 1.0)
     /// 0.0 = edge, 0.5 = center, 1.0 = other edge
     #[id = "strike_position"]
     pub strike_position: FloatParam,
-    
+
     /// Coupling stiffness (0.0 to 1.0)
     /// Bidirectional interaction strength between exciter and resonator
     #[id = "coupling_stiffness"]
     pub coupling_stiffness: FloatParam,
-    
+
     /// Position wander amount (0.0 to 1.0)
     /// Simulates hand unsteadiness during excitation
     #[id = "position_wander"]
     pub position_wander: FloatParam,
-    
+
     /// Position envelope amount (0.0 to 1.0)
     /// How much envelope affects strike position
     #[id = "position_envelope"]
     pub position_envelope: FloatParam,
-    
+
     /// Fundamental frequency anchor (0.0 to 1.0)
     /// Minimum coefficient for fundamental mode to prevent nulls
     #[id = "fundamental_anchor"]
     pub fundamental_anchor: FloatParam,
-    
+
     // Resonator Controls
-    
     /// Resonator damping (0.0 to 1.0)
     /// Overall decay time modifier
     #[id = "res_damping"]
     pub res_damping: FloatParam,
-    
+
     /// Resonator brightness (0.0 to 1.0)
     /// High frequency emphasis
     #[id = "res_brightness"]
     pub res_brightness: FloatParam,
-    
+
     // Advanced Transformations
-    
     /// Material thickness (0.0 to 1.0)
     /// Affects stiffness and frequency distribution
     #[id = "thickness"]
     pub thickness: FloatParam,
-    
+
     /// Heat amount (0.0 to 1.0)
     /// Thermal effects - detuning and damping
     #[id = "heat"]
     pub heat: FloatParam,
-    
+
     /// Sludge amount (0.0 to 1.0)
     /// Viscous damping effect
     #[id = "sludge"]
     pub sludge: FloatParam,
-    
+
     // Post-Processing Filter
-    
     /// Filter cutoff frequency in Hz (20 to 20000, skewed)
     /// Lowpass filter before drive stage
     #[id = "filter_cutoff"]
     pub filter_cutoff: FloatParam,
-    
+
     /// Filter resonance (0.0 to 1.0)
     /// Peaking response at cutoff frequency
     #[id = "filter_resonance"]
     pub filter_resonance: FloatParam,
-    
+
     /// Component tolerance (0.0 to 1.0)
     /// Analog component variation for vintage character
     #[id = "component_tolerance"]
     pub component_tolerance: FloatParam,
-    
+
     // Drive/Post-Processing
-    
     /// Drive amount in post-processing (0.0 to 5.0)
     /// Separate from exciter drive - affects final output
     #[id = "drive_amount"]
     pub drive_amount: FloatParam,
-    
+
     /// Bias starvation (0.0 to 1.0)
     /// Circuit bias reduction for asymmetric distortion
     #[id = "bias_starvation"]
     pub bias_starvation: FloatParam,
-    
+
     /// Chaos depth (0.0 to 1.0)
     /// Lorenz attractor modulation for chaotic drive
     #[id = "chaos_depth"]
     pub chaos_depth: FloatParam,
-    
+
     // Stereo/Spatial
-    
     /// Spread width (0.0 to 1.0)
     /// Stereo width from HRTF-based processing
     #[id = "spread_width"]
     pub spread_width: FloatParam,
-    
+
     /// Listener proximity (0.0 to 1.0)
     /// Near-field effect strength
     #[id = "listener_proximity"]
     pub listener_proximity: FloatParam,
-    
+
     // Body Resonance
-    
     /// Chassis material (0.0 to 1.0)
     /// Body resonance material selection
     #[id = "chassis_material"]
     pub chassis_material: FloatParam,
-    
+
     /// Chassis volume (0.0 to 1.0)
     /// Body resonance intensity
     #[id = "chassis_volume"]
     pub chassis_volume: FloatParam,
-    
+
     // Space/Reverb
-    
     /// Space mode (0=Off, 1=Factory, 2=Spring, 3=Echo)
     #[id = "space_mode"]
     pub space_mode: IntParam,
-    
+
     /// Space/reverb amount (0.0 to 1.0)
     /// Wet/dry mix for spatial effects
     #[id = "space_amount"]
     pub space_amount: FloatParam,
-    
+
     /// Factory reverb size (0.0 to 1.0)
     /// Room size for factory reverb algorithm
     #[id = "factory_size"]
     pub factory_size: FloatParam,
-    
+
     /// Machinery clutter (0.0 to 1.0)
     /// Industrial equipment density in reverb
     #[id = "machinery_clutter"]
     pub machinery_clutter: FloatParam,
-    
+
     /// Wall impedance (0.0 to 1.0)
     /// Surface reflectivity for reverb
     #[id = "wall_impedance"]
     pub wall_impedance: FloatParam,
-    
+
     /// Spring reverb tension (0.0 to 1.0)
     /// Spring stiffness in spring reverb
     #[id = "spring_tension"]
     pub spring_tension: FloatParam,
-    
+
     /// Wire stiffness (0.0 to 1.0)
     /// Spring wire thickness in spring reverb
     #[id = "wire_stiffness"]
     pub wire_stiffness: FloatParam,
-    
+
     /// Spring tank size (0.0 to 1.0)
     /// Physical spring tank dimensions
     #[id = "spring_tank_size"]
     pub spring_tank_size: FloatParam,
-    
+
     /// Echo delay time (0.0 to 1.0)
     /// Normalized delay time for echo mode
     #[id = "delay_time"]
     pub delay_time: FloatParam,
-    
+
     /// Machinery movement (0.0 to 1.0)
     /// Doppler/modulation for echo delays
     #[id = "machinery_movement"]
     pub machinery_movement: FloatParam,
-    
+
     /// High frequency damping (0.0 to 1.0)
     /// Air absorption in spatial effects
     #[id = "high_frequency_damping"]
     pub high_frequency_damping: FloatParam,
-    
+
     /// Analog ceiling (0.5 to 1.0)
     /// Clipper threshold for final output stage
     #[id = "analog_ceiling"]
     pub analog_ceiling: FloatParam,
-    
+
     /// Diode softness (0.0 to 1.0)
     /// Transition hardness in output clipper
     #[id = "diode_softness"]
@@ -431,18 +657,12 @@ pub struct CorrosionParams {
 
 /// Exciter type enumeration for serialization and UI display.
 ///
-/// Maps integer parameter values (0-16) to named exciter types.
-/// Organized into three families:
-/// - **Hit** (0-8): Impact-based excitation
-/// - **Scrape** (1, 9-12): Continuous friction excitation
-/// - **Specialty** (13-16): Non-traditional industrial excitation
+/// Maps integer parameter values (1-16) to named exciter models.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 pub enum ExciterType {
-    /// Generic hit exciter
-    Hit,
-    /// Bow/scrape friction model
-    Scrape,
+    /// Bow smooth stick-slip friction model.
+    Bow,
     /// Hand strike - flesh-on-object impact
     HandStrike,
     /// Felt mallet - soft impact with polynomial compression
@@ -477,16 +697,13 @@ pub enum ExciterType {
 
 /// Exciter family categorization for envelope selection.
 ///
-/// Each family uses a different envelope type:
-/// - **Hit**: One-shot AR envelope
-/// - **Scrape**: MSEG with looping sustain
-/// - **Specialty**: ADSR envelope
+/// Each family uses a different envelope type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExciterFamily {
     /// Impact family - uses one-shot AR envelope
     Hit,
     /// Friction family - uses MSEG with looping
-    Scrape,
+    Friction,
     /// Non-traditional family - uses ADSR envelope
     Specialty,
 }
@@ -498,11 +715,10 @@ impl ExciterType {
     /// * `v` - Integer value (0-16)
     ///
     /// # Returns
-    /// Corresponding ExciterType variant, defaulting to Hit for invalid values
+    /// Corresponding ExciterType variant, defaulting to HandStrike for invalid values
     pub fn from_int(v: i32) -> Self {
         match v {
-            0 => ExciterType::Hit,
-            1 => ExciterType::Scrape,
+            1 => ExciterType::Bow,
             2 => ExciterType::HandStrike,
             3 => ExciterType::FeltMallet,
             4 => ExciterType::HardMallet,
@@ -518,7 +734,7 @@ impl ExciterType {
             14 => ExciterType::ElectromagneticHum,
             15 => ExciterType::TensionSnap,
             16 => ExciterType::ParticleRain,
-            _ => ExciterType::Hit,
+            _ => ExciterType::HandStrike,
         }
     }
 
@@ -528,8 +744,7 @@ impl ExciterType {
     /// Static string slice with display name
     pub fn name(self) -> &'static str {
         match self {
-            ExciterType::Hit => "Hit",
-            ExciterType::Scrape => "Scrape",
+            ExciterType::Bow => "The Bow (Smooth Stick-Slip)",
             ExciterType::HandStrike => "Hand Strike",
             ExciterType::FeltMallet => "Felt Mallet",
             ExciterType::HardMallet => "Hard Mallet",
@@ -537,7 +752,7 @@ impl ExciterType {
             ExciterType::WireBrush => "Wire Brush",
             ExciterType::MetalPipe => "Metal Pipe",
             ExciterType::MetalChain => "Metal Chain",
-            ExciterType::StiffPoint => "Stiff Point",
+            ExciterType::StiffPoint => "Stiff Point Scrape",
             ExciterType::HeavyGrinding => "Heavy Grinding",
             ExciterType::CorrugatedDrag => "Corrugated Drag",
             ExciterType::TensionRise => "Tension Rise",
@@ -554,19 +769,18 @@ impl ExciterType {
     /// ExciterFamily enum determining which envelope type to use
     pub fn family(self) -> ExciterFamily {
         match self {
-            ExciterType::Hit
-            | ExciterType::HandStrike
+            ExciterType::HandStrike
             | ExciterType::FeltMallet
             | ExciterType::HardMallet
             | ExciterType::Drumstick
             | ExciterType::WireBrush
             | ExciterType::MetalPipe
             | ExciterType::MetalChain => ExciterFamily::Hit,
-            ExciterType::Scrape
+            ExciterType::Bow
             | ExciterType::StiffPoint
             | ExciterType::HeavyGrinding
             | ExciterType::CorrugatedDrag
-            | ExciterType::TensionRise => ExciterFamily::Scrape,
+            | ExciterType::TensionRise => ExciterFamily::Friction,
             ExciterType::PneumaticJet
             | ExciterType::ElectromagneticHum
             | ExciterType::TensionSnap
@@ -580,8 +794,7 @@ impl ExciterType {
     /// Integer value (0-16) for serialization
     pub fn to_int(self) -> i32 {
         match self {
-            ExciterType::Hit => 0,
-            ExciterType::Scrape => 1,
+            ExciterType::Bow => 1,
             ExciterType::HandStrike => 2,
             ExciterType::FeltMallet => 3,
             ExciterType::HardMallet => 4,
@@ -604,40 +817,45 @@ impl ExciterType {
 /// Creates an IntParam for exciter selection with name display and parsing.
 ///
 /// # Arguments
-/// * `default` - Default exciter type index (0-16)
+/// * `default` - Default exciter type index (1-16)
 ///
 /// # Returns
 /// Configured IntParam with value-to-string and string-to-value conversions
 pub fn exciter_param(default: i32) -> IntParam {
-    IntParam::new("Exciter", default, IntRange::Linear { min: 0, max: 16 })
+    let default = ExciterType::from_int(default).to_int();
+
+    IntParam::new("Exciter", default, IntRange::Linear { min: 1, max: 16 })
         .with_value_to_string(Arc::new(|value| {
             ExciterType::from_int(value).name().to_string()
         }))
         .with_string_to_value(Arc::new(|string| {
             let normalized = string.trim();
-            [
-                ExciterType::Hit,
-                ExciterType::Scrape,
-                ExciterType::HandStrike,
-                ExciterType::FeltMallet,
-                ExciterType::HardMallet,
-                ExciterType::Drumstick,
-                ExciterType::WireBrush,
-                ExciterType::MetalPipe,
-                ExciterType::MetalChain,
-                ExciterType::StiffPoint,
-                ExciterType::HeavyGrinding,
-                ExciterType::CorrugatedDrag,
-                ExciterType::TensionRise,
-                ExciterType::PneumaticJet,
-                ExciterType::ElectromagneticHum,
-                ExciterType::TensionSnap,
-                ExciterType::ParticleRain,
-            ]
-            .into_iter()
-            .find(|exciter| exciter.name().eq_ignore_ascii_case(normalized))
-            .map(ExciterType::to_int)
+            exciter_model_items()
+                .iter()
+                .find(|(_, name)| name.eq_ignore_ascii_case(normalized))
+                .map(|(value, _)| *value)
         }))
+}
+
+pub fn exciter_model_items() -> &'static [(i32, &'static str)] {
+    &[
+        (2, "Hand Strike"),
+        (3, "Felt Mallet"),
+        (4, "Hard Mallet"),
+        (5, "Drumstick"),
+        (6, "Wire Brush"),
+        (7, "Metal Pipe"),
+        (8, "Metal Chain"),
+        (1, "The Bow (Smooth Stick-Slip)"),
+        (9, "Stiff Point Scrape"),
+        (10, "Heavy Grinding"),
+        (11, "Corrugated Drag"),
+        (12, "Tension Rise"),
+        (13, "Pneumatic Jet"),
+        (14, "Electromagnetic Hum"),
+        (15, "Tension Snap"),
+        (16, "Particle Rain"),
+    ]
 }
 
 /// Resonator object type enumeration.
@@ -764,6 +982,18 @@ pub fn object_param(default: i32) -> IntParam {
         }))
 }
 
+/// Create a float parameter with deterministic string roundtrips.
+///
+/// CLAP hosts and validators are allowed to convert normalized values to text,
+/// parse that text back, and compare the displayed result. Rust's default float
+/// formatting can expose last-digit `f32` rounding differences in that path, so
+/// parameters that need plain numeric display use a fixed decimal precision.
+fn display_float_param(name: &'static str, value: f32, min: f32, max: f32) -> FloatParam {
+    FloatParam::new(name, value, FloatRange::Linear { min, max })
+        .with_value_to_string(Arc::new(|value| format!("{value:.6}")))
+        .with_string_to_value(Arc::new(|string| string.trim().parse().ok()))
+}
+
 impl Default for CorrosionParams {
     /// Creates default parameter values for plugin initialization.
     ///
@@ -773,11 +1003,11 @@ impl Default for CorrosionParams {
         Self {
             #[cfg(feature = "gui")]
             editor_state: EguiState::from_size(1440, 1024),
-            
+
             // Sound generation defaults
-            exciter: exciter_param(0), // Hit
-            object: object_param(0),   // Pipe
-            
+            exciter: exciter_param(ExciterType::HandStrike.to_int()),
+            object: object_param(0), // Pipe
+
             // Object transformation defaults
             size: FloatParam::new(
                 "Size",
@@ -796,7 +1026,7 @@ impl Default for CorrosionParams {
                     max: 10.0,
                 },
             ),
-            
+
             // Master controls
             drive: FloatParam::new("Drive", 0.0, FloatRange::Linear { min: 0.0, max: 5.0 }),
             output: FloatParam::new(
@@ -816,7 +1046,7 @@ impl Default for CorrosionParams {
                 },
             ),
             body: FloatParam::new("Body", 0.0, FloatRange::Linear { min: 0.0, max: 5.0 }),
-            
+
             // UI scale (percentage display)
             ui_scale: IntParam::new("UI Scale", 2, IntRange::Linear { min: 0, max: 4 })
                 .with_value_to_string(Arc::new(|value| match value {
@@ -826,8 +1056,16 @@ impl Default for CorrosionParams {
                     3 => "125%".to_string(),
                     4 => "150%".to_string(),
                     _ => "100%".to_string(),
+                }))
+                .with_string_to_value(Arc::new(|string| match string.trim() {
+                    "50%" => Some(0),
+                    "75%" => Some(1),
+                    "100%" => Some(2),
+                    "125%" => Some(3),
+                    "150%" => Some(4),
+                    _ => None,
                 })),
-            
+
             // ADSR envelope defaults
             env_attack: FloatParam::new(
                 "Attack",
@@ -854,7 +1092,7 @@ impl Default for CorrosionParams {
                     max: 5.0,
                 },
             ),
-            
+
             // MSEG envelope defaults
             mseg_onset: FloatParam::new(
                 "Onset",
@@ -894,7 +1132,7 @@ impl Default for CorrosionParams {
                     max: 5.0,
                 },
             ),
-            
+
             // Envelope modulation defaults
             env_amount: FloatParam::new(
                 "Env Amount",
@@ -906,7 +1144,7 @@ impl Default for CorrosionParams {
                 0.5,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             ),
-            
+
             // MSEG loop defaults
             loop_mode: IntParam::new("Loop Mode", 0, IntRange::Linear { min: 0, max: 2 }),
             loop_start_stage: IntParam::new(
@@ -915,7 +1153,7 @@ impl Default for CorrosionParams {
                 IntRange::Linear { min: 0, max: 5 },
             ),
             loop_end_stage: IntParam::new("Loop End Stage", 4, IntRange::Linear { min: 0, max: 5 }),
-            
+
             // Timing and sync
             sync_rate: FloatParam::new(
                 "Sync Rate",
@@ -948,7 +1186,7 @@ impl Default for CorrosionParams {
                     max: 1.0,
                 },
             ),
-            
+
             // Exciter control defaults
             exciter_pressure: FloatParam::new(
                 "Pressure",
@@ -961,7 +1199,68 @@ impl Default for CorrosionParams {
                 0.3,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             ),
-            
+
+            // Dedicated exciter defaults derived from the previous generic mappings
+            hand_mass: display_float_param("Hand Mass", 1.7, 0.4, 3.0),
+            flesh_stiffness: display_float_param("Flesh Stiffness", 0.425, 0.05, 0.8),
+            flesh_damping: display_float_param("Flesh Damping", 0.75, 0.3, 1.8),
+            mute_decay: display_float_param("Mute Decay", 0.9245, 0.85, 0.999),
+            mallet_mass: display_float_param("Mallet Mass", 1.5, 0.4, 3.5),
+            felt_softness: display_float_param("Felt Softness", 0.94, 0.1, 1.3),
+            core_hardness: display_float_param("Core Hardness", 2.5, 0.5, 4.5),
+            compression_curve: display_float_param("Compression Curve", 2.9, 2.0, 5.0),
+            material_stiffness: display_float_param("Material Stiffness", 2.75, 0.5, 5.0),
+            impact_damping: display_float_param("Impact Damping", 0.46, 0.1, 1.3),
+            stick_mass: display_float_param("Stick Mass", 0.65, 0.05, 1.25),
+            tip_stiffness: display_float_param("Tip Stiffness", 3.8, 0.8, 6.8),
+            restitution_bounciness: display_float_param("Restitution Bounciness", 0.41, 0.2, 0.9),
+            micro_bounce_limit: display_float_param("Micro Bounce Limit", 4.0, 2.0, 8.0),
+            wire_density: display_float_param("Wire Density", 46.0, 10.0, 130.0),
+            spread_duration: display_float_param("Spread Duration", 130.0, 10.0, 250.0),
+            brush_wire_stiffness: display_float_param("Wire Stiffness", 0.3, 0.0, 1.0),
+            amplitude_randomization: display_float_param("Amplitude Randomization", 0.3, 0.0, 1.0),
+            pipe_mass: display_float_param("Pipe Mass", 1.5, 0.4, 2.6),
+            metal_stiffness: display_float_param("Metal Stiffness", 3.0, 0.5, 5.5),
+            pipe_pitch: display_float_param("Pipe Pitch", 1.1, 0.5, 2.5),
+            pipe_ring_decay: display_float_param("Pipe Ring Decay", 0.9795, 0.96, 0.999),
+            link_count: display_float_param("Link Count", 9.0, 3.0, 15.0),
+            chain_mass: display_float_param("Chain Mass", 0.8, 0.2, 1.4),
+            drop_envelope_spread: display_float_param("Drop Envelope Spread", 220.0, 40.0, 400.0),
+            internal_rattle: display_float_param("Internal Rattle", 0.3, 0.0, 1.0),
+            rattle_color: display_float_param("Rattle Color", 0.3, 0.0, 1.0),
+            bow_pressure: display_float_param("Bow Pressure", 1.1, 0.2, 2.0),
+            bow_speed: display_float_param("Bow Speed", 1.05, 0.1, 2.0),
+            rosin_grip: display_float_param("Rosin Grip", 0.485, 0.05, 1.5),
+            slip_curve: display_float_param("Slip Curve", 0.485, 0.05, 1.5),
+            scrape_speed: display_float_param("Scrape Speed", 0.82, 0.1, 2.5),
+            point_pressure: display_float_param("Point Pressure", 0.8, 0.1, 1.5),
+            chatter_pitch: display_float_param("Chatter Pitch", 0.52, 0.1, 1.5),
+            chatter_damping: display_float_param("Chatter Damping", 0.66, 0.1, 0.9),
+            grind_speed: display_float_param("Grind Speed", 0.82, 0.1, 2.5),
+            grind_pressure: display_float_param("Grind Pressure", 1.0, 0.1, 1.9),
+            surface_grit: display_float_param("Surface Grit", 0.3, 0.0, 1.0),
+            grit_color: display_float_param("Grit Color", 0.3, 0.0, 1.0),
+            drag_speed: display_float_param("Drag Speed", 0.82, 0.1, 2.5),
+            ridge_spacing: display_float_param("Ridge Spacing", 0.143, 0.01, 0.2),
+            ridge_depth: display_float_param("Ridge Depth", 0.6, 0.0, 2.0),
+            drag_exciter_mass: display_float_param("Exciter Mass", 1.1, 0.2, 2.0),
+            pull_speed: display_float_param("Pull Speed", 0.8, 0.05, 1.55),
+            break_threshold: display_float_param("Break Threshold", 0.85, 0.1, 1.6),
+            slip_stochasticity: display_float_param("Slip Stochasticity", 0.3, 0.0, 1.0),
+            creak_sharpness: display_float_param("Creak Sharpness", 0.56, 0.2, 1.4),
+            air_pressure: display_float_param("Air Pressure", 1.1, 0.1, 2.1),
+            nozzle_width: display_float_param("Nozzle Width", 0.85, 0.1, 1.6),
+            turbulence_chaos: display_float_param("Turbulence Chaos", 0.6, 0.0, 2.0),
+            mains_frequency: display_float_param("Mains Frequency", 80.0, 40.0, 120.0),
+            coil_proximity: display_float_param("Coil Proximity", 1.0, 0.0, 2.0),
+            voltage_sag: display_float_param("Voltage Sag", 0.6, 0.0, 2.0),
+            pull_distance: display_float_param("Pull Distance", 0.8, 0.1, 1.5),
+            hook_stiffness: display_float_param("Hook Stiffness", 1.2, 0.2, 2.2),
+            snap_force: display_float_param("Snap Force", 0.67, 0.1, 2.0),
+            flow_rate: display_float_param("Flow Rate", 1.6, 0.1, 3.1),
+            particle_mass: display_float_param("Particle Mass", 0.525, 0.05, 1.0),
+            mass_variance: display_float_param("Mass Variance", 0.6, 0.0, 2.0),
+
             // Interaction defaults
             strike_position: FloatParam::new(
                 "Strike Position",
@@ -988,7 +1287,7 @@ impl Default for CorrosionParams {
                 0.3,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             ),
-            
+
             // Resonator control defaults
             res_damping: FloatParam::new("Damping", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
             res_brightness: FloatParam::new(
@@ -999,7 +1298,7 @@ impl Default for CorrosionParams {
             thickness: FloatParam::new("Thickness", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
             heat: FloatParam::new("Heat", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
             sludge: FloatParam::new("Sludge", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            
+
             // Post-processing filter defaults
             filter_cutoff: FloatParam::new(
                 "Filter Cutoff",
@@ -1020,7 +1319,7 @@ impl Default for CorrosionParams {
                 0.0,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             ),
-            
+
             // Drive defaults
             drive_amount: FloatParam::new(
                 "Drive Amount",
@@ -1037,7 +1336,7 @@ impl Default for CorrosionParams {
                 0.0,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             ),
-            
+
             // Stereo/spatial defaults
             spread_width: FloatParam::new(
                 "Spread Width",
@@ -1049,7 +1348,7 @@ impl Default for CorrosionParams {
                 0.5,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             ),
-            
+
             // Body resonance defaults
             chassis_material: FloatParam::new(
                 "Chassis Material",
@@ -1061,7 +1360,7 @@ impl Default for CorrosionParams {
                 0.5,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             ),
-            
+
             // Space/reverb defaults
             space_mode: IntParam::new("Space Mode", 0, IntRange::Linear { min: 0, max: 3 }),
             space_amount: FloatParam::new(
@@ -1114,7 +1413,7 @@ impl Default for CorrosionParams {
                 0.5,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             ),
-            
+
             // Output stage defaults
             analog_ceiling: FloatParam::new(
                 "Analog Ceiling",

@@ -3,7 +3,7 @@
 //! Models Coulomb friction plus noisy asperity tearing as a scrape moves across
 //! rough material. The math combines a signed friction baseline with filtered
 //! random variation to approximate rough concrete, sandpaper, and grinding
-//! contact inside the `dsp/exciters` scrape family.
+//! contact inside the `dsp/exciters` friction family.
 //! Use it for abrasive drag, metal-on-stone grinding, or harsh industrial wear.
 
 /// Scratchy friction exciter with tearing-noise modulation.

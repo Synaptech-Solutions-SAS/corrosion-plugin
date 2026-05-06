@@ -3,11 +3,11 @@
 //! Models a scraping or dragging contact moving over periodic surface ridges,
 //! using a sinusoidal bump profile to modulate contact force.
 //! The algorithm is a simple periodic contact/friction model and fits the
-//! `dsp/exciters` scrape family as a coarse, macroscopic surface interaction.
+//! `dsp/exciters` friction family as a coarse, macroscopic surface interaction.
 //! Use it for conveyor squeals, dragged tools, corrugated metal, or textured
-//! industrial scrape sounds.
+//! industrial drag sounds.
 
-/// Scrape-style exciter for periodic ridge contact.
+/// Drag exciter for periodic ridge contact.
 #[derive(Clone, Debug)]
 pub struct CorrugatedDrag {
     drag_speed: f32,

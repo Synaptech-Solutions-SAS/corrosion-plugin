@@ -1,3 +1,0 @@
-family=pipe wav_path=output/family-comparisons/pipe_comparison.wav summary_path=output/family-comparisons/pipe_comparison_summary.txt checksum=6246922928677794029 peak=0.702808201 rms=0.304226786
-family=plate wav_path=output/family-comparisons/plate_comparison.wav summary_path=output/family-comparisons/plate_comparison_summary.txt checksum=7714993276336816179 peak=0.353015482 rms=0.088278480
-family=tank wav_path=output/family-comparisons/tank_comparison.wav summary_path=output/family-comparisons/tank_comparison_summary.txt checksum=3420264873218176746 peak=2.794249296 rms=1.259935141

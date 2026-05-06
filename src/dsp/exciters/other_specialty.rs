@@ -1,7 +1,7 @@
 //! Specialty exciter collection.
 //!
 //! This module groups several non-standard physical models used by
-//! `dsp/exciters` when the sound source is not a plain strike or scrape.
+//! `dsp/exciters` when the sound source is not a plain strike or friction tool.
 //! It includes pneumatic turbulence, electromagnetic hum, tension snaps, and
 //! granular particle emission, each expressed with lightweight real-time math.
 //! Use these models for air jets, electrical buzz, release clicks, and rain-like

@@ -8,7 +8,7 @@ fn different_velocities_produce_different_roughness() {
 
     for &velocity in &[32.0f32, 64.0, 100.0] {
         let mut voice = Voice::new();
-        voice.note_on(60, velocity, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.5, 0);
+        voice.note_on(60, velocity, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.5, 2);
 
         let mut zero_crossings = 0usize;
         let mut prev_sample = 0.0f32;
@@ -42,10 +42,10 @@ fn high_velocity_has_faster_decay() {
     let sample_rate = 48_000u32;
 
     let mut low_vel_voice = Voice::new();
-    low_vel_voice.note_on(60, 32.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
+    low_vel_voice.note_on(60, 32.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2);
 
     let mut high_vel_voice = Voice::new();
-    high_vel_voice.note_on(60, 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
+    high_vel_voice.note_on(60, 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2);
 
     let mut low_vel_energy = 0.0f32;
     let mut high_vel_energy = 0.0f32;

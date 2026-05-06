@@ -10,6 +10,7 @@ use nih_plug::prelude::{util, FloatParam, FloatRange, IntParam, IntRange};
 pub const PRESET_VERSION: &str = "3";
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PresetParameters {
     pub ui_scale: i32,
     pub env_attack: f32,
@@ -35,6 +36,65 @@ pub struct PresetParameters {
     pub exciter_pressure: f32,
     pub exciter_speed: f32,
     pub exciter_roughness: f32,
+    pub hand_mass: f32,
+    pub flesh_stiffness: f32,
+    pub flesh_damping: f32,
+    pub mute_decay: f32,
+    pub mallet_mass: f32,
+    pub felt_softness: f32,
+    pub core_hardness: f32,
+    pub compression_curve: f32,
+    pub material_stiffness: f32,
+    pub impact_damping: f32,
+    pub stick_mass: f32,
+    pub tip_stiffness: f32,
+    pub restitution_bounciness: f32,
+    pub micro_bounce_limit: f32,
+    pub wire_density: f32,
+    pub spread_duration: f32,
+    pub brush_wire_stiffness: f32,
+    pub amplitude_randomization: f32,
+    pub pipe_mass: f32,
+    pub metal_stiffness: f32,
+    pub pipe_pitch: f32,
+    pub pipe_ring_decay: f32,
+    pub link_count: f32,
+    pub chain_mass: f32,
+    pub drop_envelope_spread: f32,
+    pub internal_rattle: f32,
+    pub rattle_color: f32,
+    pub bow_pressure: f32,
+    pub bow_speed: f32,
+    pub rosin_grip: f32,
+    pub slip_curve: f32,
+    pub scrape_speed: f32,
+    pub point_pressure: f32,
+    pub chatter_pitch: f32,
+    pub chatter_damping: f32,
+    pub grind_speed: f32,
+    pub grind_pressure: f32,
+    pub surface_grit: f32,
+    pub grit_color: f32,
+    pub drag_speed: f32,
+    pub ridge_spacing: f32,
+    pub ridge_depth: f32,
+    pub drag_exciter_mass: f32,
+    pub pull_speed: f32,
+    pub break_threshold: f32,
+    pub slip_stochasticity: f32,
+    pub creak_sharpness: f32,
+    pub air_pressure: f32,
+    pub nozzle_width: f32,
+    pub turbulence_chaos: f32,
+    pub mains_frequency: f32,
+    pub coil_proximity: f32,
+    pub voltage_sag: f32,
+    pub pull_distance: f32,
+    pub hook_stiffness: f32,
+    pub snap_force: f32,
+    pub flow_rate: f32,
+    pub particle_mass: f32,
+    pub mass_variance: f32,
     pub strike_position: f32,
     pub coupling_stiffness: f32,
     pub position_wander: f32,
@@ -103,6 +163,65 @@ impl PresetParameters {
             exciter_pressure: params.exciter_pressure.value(),
             exciter_speed: params.exciter_speed.value(),
             exciter_roughness: params.exciter_roughness.value(),
+            hand_mass: params.hand_mass.value(),
+            flesh_stiffness: params.flesh_stiffness.value(),
+            flesh_damping: params.flesh_damping.value(),
+            mute_decay: params.mute_decay.value(),
+            mallet_mass: params.mallet_mass.value(),
+            felt_softness: params.felt_softness.value(),
+            core_hardness: params.core_hardness.value(),
+            compression_curve: params.compression_curve.value(),
+            material_stiffness: params.material_stiffness.value(),
+            impact_damping: params.impact_damping.value(),
+            stick_mass: params.stick_mass.value(),
+            tip_stiffness: params.tip_stiffness.value(),
+            restitution_bounciness: params.restitution_bounciness.value(),
+            micro_bounce_limit: params.micro_bounce_limit.value(),
+            wire_density: params.wire_density.value(),
+            spread_duration: params.spread_duration.value(),
+            brush_wire_stiffness: params.brush_wire_stiffness.value(),
+            amplitude_randomization: params.amplitude_randomization.value(),
+            pipe_mass: params.pipe_mass.value(),
+            metal_stiffness: params.metal_stiffness.value(),
+            pipe_pitch: params.pipe_pitch.value(),
+            pipe_ring_decay: params.pipe_ring_decay.value(),
+            link_count: params.link_count.value(),
+            chain_mass: params.chain_mass.value(),
+            drop_envelope_spread: params.drop_envelope_spread.value(),
+            internal_rattle: params.internal_rattle.value(),
+            rattle_color: params.rattle_color.value(),
+            bow_pressure: params.bow_pressure.value(),
+            bow_speed: params.bow_speed.value(),
+            rosin_grip: params.rosin_grip.value(),
+            slip_curve: params.slip_curve.value(),
+            scrape_speed: params.scrape_speed.value(),
+            point_pressure: params.point_pressure.value(),
+            chatter_pitch: params.chatter_pitch.value(),
+            chatter_damping: params.chatter_damping.value(),
+            grind_speed: params.grind_speed.value(),
+            grind_pressure: params.grind_pressure.value(),
+            surface_grit: params.surface_grit.value(),
+            grit_color: params.grit_color.value(),
+            drag_speed: params.drag_speed.value(),
+            ridge_spacing: params.ridge_spacing.value(),
+            ridge_depth: params.ridge_depth.value(),
+            drag_exciter_mass: params.drag_exciter_mass.value(),
+            pull_speed: params.pull_speed.value(),
+            break_threshold: params.break_threshold.value(),
+            slip_stochasticity: params.slip_stochasticity.value(),
+            creak_sharpness: params.creak_sharpness.value(),
+            air_pressure: params.air_pressure.value(),
+            nozzle_width: params.nozzle_width.value(),
+            turbulence_chaos: params.turbulence_chaos.value(),
+            mains_frequency: params.mains_frequency.value(),
+            coil_proximity: params.coil_proximity.value(),
+            voltage_sag: params.voltage_sag.value(),
+            pull_distance: params.pull_distance.value(),
+            hook_stiffness: params.hook_stiffness.value(),
+            snap_force: params.snap_force.value(),
+            flow_rate: params.flow_rate.value(),
+            particle_mass: params.particle_mass.value(),
+            mass_variance: params.mass_variance.value(),
             strike_position: params.strike_position.value(),
             coupling_stiffness: params.coupling_stiffness.value(),
             position_wander: params.position_wander.value(),
@@ -182,6 +301,85 @@ impl PresetParameters {
         params.exciter_pressure = float_param("Pressure", self.exciter_pressure, 0.0, 1.0);
         params.exciter_speed = float_param("Speed", self.exciter_speed, 0.0, 1.0);
         params.exciter_roughness = float_param("Roughness", self.exciter_roughness, 0.0, 1.0);
+        params.hand_mass = float_param("Hand Mass", self.hand_mass, 0.4, 3.0);
+        params.flesh_stiffness = float_param("Flesh Stiffness", self.flesh_stiffness, 0.05, 0.8);
+        params.flesh_damping = float_param("Flesh Damping", self.flesh_damping, 0.3, 1.8);
+        params.mute_decay = float_param("Mute Decay", self.mute_decay, 0.85, 0.999);
+        params.mallet_mass = float_param("Mallet Mass", self.mallet_mass, 0.4, 3.5);
+        params.felt_softness = float_param("Felt Softness", self.felt_softness, 0.1, 1.3);
+        params.core_hardness = float_param("Core Hardness", self.core_hardness, 0.5, 4.5);
+        params.compression_curve =
+            float_param("Compression Curve", self.compression_curve, 2.0, 5.0);
+        params.material_stiffness =
+            float_param("Material Stiffness", self.material_stiffness, 0.5, 5.0);
+        params.impact_damping = float_param("Impact Damping", self.impact_damping, 0.1, 1.3);
+        params.stick_mass = float_param("Stick Mass", self.stick_mass, 0.05, 1.25);
+        params.tip_stiffness = float_param("Tip Stiffness", self.tip_stiffness, 0.8, 6.8);
+        params.restitution_bounciness = float_param(
+            "Restitution Bounciness",
+            self.restitution_bounciness,
+            0.2,
+            0.9,
+        );
+        params.micro_bounce_limit =
+            float_param("Micro Bounce Limit", self.micro_bounce_limit, 2.0, 8.0);
+        params.wire_density = float_param("Wire Density", self.wire_density, 10.0, 130.0);
+        params.spread_duration = float_param("Spread Duration", self.spread_duration, 10.0, 250.0);
+        params.brush_wire_stiffness =
+            float_param("Wire Stiffness", self.brush_wire_stiffness, 0.0, 1.0);
+        params.amplitude_randomization = float_param(
+            "Amplitude Randomization",
+            self.amplitude_randomization,
+            0.0,
+            1.0,
+        );
+        params.pipe_mass = float_param("Pipe Mass", self.pipe_mass, 0.4, 2.6);
+        params.metal_stiffness = float_param("Metal Stiffness", self.metal_stiffness, 0.5, 5.5);
+        params.pipe_pitch = float_param("Pipe Pitch", self.pipe_pitch, 0.5, 2.5);
+        params.pipe_ring_decay = float_param("Pipe Ring Decay", self.pipe_ring_decay, 0.96, 0.999);
+        params.link_count = float_param("Link Count", self.link_count, 3.0, 15.0);
+        params.chain_mass = float_param("Chain Mass", self.chain_mass, 0.2, 1.4);
+        params.drop_envelope_spread = float_param(
+            "Drop Envelope Spread",
+            self.drop_envelope_spread,
+            40.0,
+            400.0,
+        );
+        params.internal_rattle = float_param("Internal Rattle", self.internal_rattle, 0.0, 1.0);
+        params.rattle_color = float_param("Rattle Color", self.rattle_color, 0.0, 1.0);
+        params.bow_pressure = float_param("Bow Pressure", self.bow_pressure, 0.2, 2.0);
+        params.bow_speed = float_param("Bow Speed", self.bow_speed, 0.1, 2.0);
+        params.rosin_grip = float_param("Rosin Grip", self.rosin_grip, 0.05, 1.5);
+        params.slip_curve = float_param("Slip Curve", self.slip_curve, 0.05, 1.5);
+        params.scrape_speed = float_param("Scrape Speed", self.scrape_speed, 0.1, 2.5);
+        params.point_pressure = float_param("Point Pressure", self.point_pressure, 0.1, 1.5);
+        params.chatter_pitch = float_param("Chatter Pitch", self.chatter_pitch, 0.1, 1.5);
+        params.chatter_damping = float_param("Chatter Damping", self.chatter_damping, 0.1, 0.9);
+        params.grind_speed = float_param("Grind Speed", self.grind_speed, 0.1, 2.5);
+        params.grind_pressure = float_param("Grind Pressure", self.grind_pressure, 0.1, 1.9);
+        params.surface_grit = float_param("Surface Grit", self.surface_grit, 0.0, 1.0);
+        params.grit_color = float_param("Grit Color", self.grit_color, 0.0, 1.0);
+        params.drag_speed = float_param("Drag Speed", self.drag_speed, 0.1, 2.5);
+        params.ridge_spacing = float_param("Ridge Spacing", self.ridge_spacing, 0.01, 0.2);
+        params.ridge_depth = float_param("Ridge Depth", self.ridge_depth, 0.0, 2.0);
+        params.drag_exciter_mass = float_param("Exciter Mass", self.drag_exciter_mass, 0.2, 2.0);
+        params.pull_speed = float_param("Pull Speed", self.pull_speed, 0.05, 1.55);
+        params.break_threshold = float_param("Break Threshold", self.break_threshold, 0.1, 1.6);
+        params.slip_stochasticity =
+            float_param("Slip Stochasticity", self.slip_stochasticity, 0.0, 1.0);
+        params.creak_sharpness = float_param("Creak Sharpness", self.creak_sharpness, 0.2, 1.4);
+        params.air_pressure = float_param("Air Pressure", self.air_pressure, 0.1, 2.1);
+        params.nozzle_width = float_param("Nozzle Width", self.nozzle_width, 0.1, 1.6);
+        params.turbulence_chaos = float_param("Turbulence Chaos", self.turbulence_chaos, 0.0, 2.0);
+        params.mains_frequency = float_param("Mains Frequency", self.mains_frequency, 40.0, 120.0);
+        params.coil_proximity = float_param("Coil Proximity", self.coil_proximity, 0.0, 2.0);
+        params.voltage_sag = float_param("Voltage Sag", self.voltage_sag, 0.0, 2.0);
+        params.pull_distance = float_param("Pull Distance", self.pull_distance, 0.1, 1.5);
+        params.hook_stiffness = float_param("Hook Stiffness", self.hook_stiffness, 0.2, 2.2);
+        params.snap_force = float_param("Snap Force", self.snap_force, 0.1, 2.0);
+        params.flow_rate = float_param("Flow Rate", self.flow_rate, 0.1, 3.1);
+        params.particle_mass = float_param("Particle Mass", self.particle_mass, 0.05, 1.0);
+        params.mass_variance = float_param("Mass Variance", self.mass_variance, 0.0, 2.0);
         params.strike_position = float_param("Strike Position", self.strike_position, 0.0, 1.0);
         params.coupling_stiffness =
             float_param("Coupling Stiffness", self.coupling_stiffness, 0.0, 1.0);
@@ -244,6 +442,8 @@ impl PresetParameters {
 
 fn float_param(name: &'static str, value: f32, min: f32, max: f32) -> FloatParam {
     FloatParam::new(name, value, FloatRange::Linear { min, max })
+        .with_value_to_string(std::sync::Arc::new(|value| format!("{value:.6}")))
+        .with_string_to_value(std::sync::Arc::new(|string| string.trim().parse().ok()))
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -7,7 +7,7 @@ fn render_voice(profile: ModalProfileId) -> Vec<f32> {
     let frames = 48_000;
     let mut voice = Voice::new();
 
-    voice.note_on(60, 100.0, profile, 0, 1.0, 0.0, 0.0, 0);
+    voice.note_on(60, 100.0, profile, 0, 1.0, 0.0, 0.0, 2);
 
     let mut output = Vec::with_capacity(frames);
     for _ in 0..frames {

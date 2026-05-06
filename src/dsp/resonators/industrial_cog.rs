@@ -1,0 +1,63 @@
+//! Industrial Cog resonator model using Circular Free-Boundary Plate with Mode Splitting.
+//!
+//! Frequency formula: f_n split into f_n(1 ± ε) pairs for metallic beating
+
+use crate::dsp::resonators::ResonatorAlgorithm;
+use crate::dsp::ModalModeSpec;
+
+/// Resonator model for split-pair cog and blade spectra.
+#[derive(Clone, Debug)]
+pub struct IndustrialCogResonator {
+    blade_radius: f32,
+    tooth_dissonance: f32,
+    blade_thickness: f32,
+}
+
+impl IndustrialCogResonator {
+    const BESSEL_ROOTS: [f32; 6] = [3.83, 7.02, 10.17, 13.32, 16.47, 19.64];
+
+    pub fn new() -> Self {
+        Self {
+            blade_radius: 0.5,
+            tooth_dissonance: 0.1,
+            blade_thickness: 0.5,
+        }
+    }
+}
+
+impl Default for IndustrialCogResonator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ResonatorAlgorithm for IndustrialCogResonator {
+    fn generate_modes(
+        &self,
+        fundamental_hz: f32,
+        mode_count: usize,
+        size_scale: crate::dsp::SizeScale,
+    ) -> Vec<ModalModeSpec> {
+        let scale = fundamental_hz / (size_scale.factor() * (0.5 + self.blade_radius));
+        let mut modes = Vec::with_capacity(mode_count * 2);
+
+        for i in 0..mode_count.min(6) {
+            let root = Self::BESSEL_ROOTS[i];
+            let base_freq = scale * root * root * 0.01;
+            let epsilon = self.tooth_dissonance * 0.03 * ((i + 1) as f32);
+
+            let decay = 0.5 + self.blade_thickness * 1.5;
+            let gain = 0.015 / ((i + 1) as f32);
+
+            // Mode splitting creates metallic beating
+            modes.push(ModalModeSpec::new(base_freq * (1.0 - epsilon), decay, gain));
+            modes.push(ModalModeSpec::new(
+                base_freq * (1.0 + epsilon),
+                decay * 0.9,
+                gain * 0.8,
+            ));
+        }
+
+        modes
+    }
+}

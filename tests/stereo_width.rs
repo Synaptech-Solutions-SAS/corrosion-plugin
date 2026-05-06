@@ -19,18 +19,18 @@ fn width_zero_is_mono() {
 fn width_one_produces_stereo() {
     let mut resonator = ModalResonator::with_profile(ModalProfileId::Pipe);
     let sample_rate = 48_000u32;
-    
+
     let mut left_sum = 0.0f32;
     let mut right_sum = 0.0f32;
-    
+
     for _ in 0..100 {
         let (left, right) = resonator.process_sample_stereo(1.0, sample_rate, 1.0);
         left_sum += left.abs();
         right_sum += right.abs();
     }
-    
+
     let correlation = (left_sum - right_sum).abs() / (left_sum + right_sum + 1e-6);
-    
+
     assert!(
         correlation < 0.3,
         "Width=1 should produce stereo with correlated but different channels, correlation={correlation}"

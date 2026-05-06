@@ -238,7 +238,10 @@ mod tests {
     #[test]
     fn mode_coefficient_center() {
         let c0 = mode_coefficient_1d(0, 0.5);
-        assert!((c0 - 1.0).abs() < 0.001, "Fundamental at center should be ~1.0");
+        assert!(
+            (c0 - 1.0).abs() < 0.001,
+            "Fundamental at center should be ~1.0"
+        );
 
         let c1 = mode_coefficient_1d(1, 0.5);
         assert!(c1.abs() < 0.001, "2nd mode at center should be ~0.0 (node)");

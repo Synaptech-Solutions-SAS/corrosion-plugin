@@ -7,7 +7,7 @@ fn rapid_width_and_body_changes_stay_finite() {
     let mut manager = VoiceManager::new();
 
     for i in 0..MAX_VOICES {
-        manager.note_on(48 + i as u8, 100.0, ModalProfileId::Pipe, 1.0, 0.0, 0.0, 0);
+        manager.note_on(48 + i as u8, 100.0, ModalProfileId::Pipe, 1.0, 0.0, 0.0, 2);
     }
 
     let mut max_peak = 0.0f32;
@@ -28,7 +28,7 @@ fn rapid_width_and_body_changes_stay_finite() {
 fn body_parameter_does_not_create_dc_offset() {
     let sample_rate = 48_000u32;
     let mut manager = VoiceManager::new();
-    manager.note_on(60, 100.0, ModalProfileId::Tank, 1.0, 0.0, 0.0, 0);
+    manager.note_on(60, 100.0, ModalProfileId::Tank, 1.0, 0.0, 0.0, 2);
 
     let mut sum = 0.0f32;
     for frame in 0..10_000 {
@@ -38,5 +38,8 @@ fn body_parameter_does_not_create_dc_offset() {
     }
 
     let mean = sum / (10_000.0 * 2.0);
-    assert!(mean.abs() < 0.01, "DC offset should be negligible, got {mean}");
+    assert!(
+        mean.abs() < 0.01,
+        "DC offset should be negligible, got {mean}"
+    );
 }

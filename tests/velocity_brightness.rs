@@ -1,27 +1,18 @@
-use corrotion::dsp::{ModalProfileId};
+use corrotion::dsp::ModalProfileId;
 use corrotion::offline::render_behavior_metrics;
 use corrotion::voice::Voice;
 
 fn render_note_at_velocity(velocity: f32, frames: usize) -> f32 {
     let sample_rate = 48_000u32;
     let mut voice = Voice::new();
-    
-    voice.note_on(
-        60,
-        velocity,
-        ModalProfileId::Pipe,
-        0,
-        1.0,
-        0.0,
-        0.0,
-        0,
-    );
-    
+
+    voice.note_on(60, velocity, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2);
+
     let mut output = Vec::with_capacity(frames);
     for _ in 0..frames {
         output.push(voice.process_sample(sample_rate));
     }
-    
+
     render_behavior_metrics(&output).brightness_proxy
 }
 
@@ -38,23 +29,14 @@ fn level_normalize(samples: &mut [f32]) {
 fn render_and_normalize(velocity: f32, frames: usize) -> (f32, Vec<f32>) {
     let sample_rate = 48_000u32;
     let mut voice = Voice::new();
-    
-    voice.note_on(
-        60,
-        velocity,
-        ModalProfileId::Pipe,
-        0,
-        1.0,
-        0.0,
-        0.0,
-        0,
-    );
-    
+
+    voice.note_on(60, velocity, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2);
+
     let mut output = Vec::with_capacity(frames);
     for _ in 0..frames {
         output.push(voice.process_sample(sample_rate));
     }
-    
+
     level_normalize(&mut output);
     let brightness = render_behavior_metrics(&output).brightness_proxy;
     (brightness, output)
@@ -63,10 +45,10 @@ fn render_and_normalize(velocity: f32, frames: usize) -> (f32, Vec<f32>) {
 #[test]
 fn high_velocity_is_brighter_than_low_velocity() {
     let frames = 48_000;
-    
+
     let (low_brightness, _) = render_and_normalize(0.2 * 127.0, frames);
     let (high_brightness, _) = render_and_normalize(1.0 * 127.0, frames);
-    
+
     assert!(
         high_brightness > low_brightness * 1.01,
         "High velocity brightness ({:.6}) should be measurably > low velocity brightness ({:.6})",
@@ -80,16 +62,16 @@ fn velocity_affects_brightness_monotonically() {
     let frames = 24_000;
     let velocities = [0.2, 0.4, 0.6, 0.8, 1.0];
     let mut brightness_values = Vec::new();
-    
+
     for &vel_norm in &velocities {
         let velocity = vel_norm * 127.0;
         let brightness = render_note_at_velocity(velocity, frames);
         brightness_values.push(brightness);
     }
-    
+
     let mut increasing_count = 0;
     let mut total_comparisons = 0;
-    
+
     for i in 0..brightness_values.len() - 1 {
         for j in (i + 1)..brightness_values.len() {
             if brightness_values[j] > brightness_values[i] {
@@ -98,7 +80,7 @@ fn velocity_affects_brightness_monotonically() {
             total_comparisons += 1;
         }
     }
-    
+
     let ratio = increasing_count as f32 / total_comparisons as f32;
     assert!(
         ratio >= 0.70,
@@ -111,27 +93,35 @@ fn velocity_affects_brightness_monotonically() {
 fn velocity_preserves_amplitude_scaling() {
     let sample_rate = 48_000u32;
     let frames = 100;
-    
+
     let low_vel = 0.2 * 127.0;
     let high_vel = 1.0 * 127.0;
-    
+
     let mut low_voice = Voice::new();
-    low_voice.note_on(60, low_vel, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
-    
+    low_voice.note_on(60, low_vel, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2);
+
     let mut high_voice = Voice::new();
-    high_voice.note_on(60, high_vel, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
-    
+    high_voice.note_on(60, high_vel, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2);
+
     let mut low_first_samples = Vec::new();
     let mut high_first_samples = Vec::new();
-    
+
     for _ in 0..frames {
         low_first_samples.push(low_voice.process_sample(sample_rate));
         high_first_samples.push(high_voice.process_sample(sample_rate));
     }
-    
-    let low_peak = low_first_samples.iter().take(20).map(|s| s.abs()).fold(0.0f32, f32::max);
-    let high_peak = high_first_samples.iter().take(20).map(|s| s.abs()).fold(0.0f32, f32::max);
-    
+
+    let low_peak = low_first_samples
+        .iter()
+        .take(20)
+        .map(|s| s.abs())
+        .fold(0.0f32, f32::max);
+    let high_peak = high_first_samples
+        .iter()
+        .take(20)
+        .map(|s| s.abs())
+        .fold(0.0f32, f32::max);
+
     let ratio = high_peak / low_peak.max(1e-10);
     assert!(
         ratio > 1.0,
@@ -144,27 +134,27 @@ fn velocity_preserves_amplitude_scaling() {
 fn velocity_affects_spectral_content() {
     let sample_rate = 48_000u32;
     let frames = 48_000;
-    
+
     let mut low_voice = Voice::new();
-    low_voice.note_on(60, 0.2 * 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
-    
+    low_voice.note_on(60, 0.2 * 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2);
+
     let mut high_voice = Voice::new();
-    high_voice.note_on(60, 1.0 * 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 0);
-    
+    high_voice.note_on(60, 1.0 * 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2);
+
     let mut low_samples = Vec::new();
     let mut high_samples = Vec::new();
-    
+
     for _ in 0..frames {
         low_samples.push(low_voice.process_sample(sample_rate));
         high_samples.push(high_voice.process_sample(sample_rate));
     }
-    
+
     level_normalize(&mut low_samples);
     level_normalize(&mut high_samples);
-    
+
     let low_brightness = render_behavior_metrics(&low_samples).brightness_proxy;
     let high_brightness = render_behavior_metrics(&high_samples).brightness_proxy;
-    
+
     assert!(
         high_brightness > low_brightness,
         "High velocity should produce brighter spectral content (high: {:.6}, low: {:.6})",

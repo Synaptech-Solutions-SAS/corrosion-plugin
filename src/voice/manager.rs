@@ -17,11 +17,11 @@ pub struct VoiceManager {
 }
 
 impl VoiceManager {
-/// Create a voice manager with all slots initialized.
-///
-/// # Returns
-///
-/// A manager ready to receive note events.
+    /// Create a voice manager with all slots initialized.
+    ///
+    /// # Returns
+    ///
+    /// A manager ready to receive note events.
     pub fn new() -> Self {
         Self {
             voices: [
@@ -38,20 +38,20 @@ impl VoiceManager {
         }
     }
 
-/// Trigger a note using default voice controls.
-///
-/// This is the simple wrapper used when the caller does not need
-/// per-note control overrides.
-///
-/// # Arguments
-///
-/// * `note` - MIDI note number for the new voice.
-/// * `velocity` - MIDI velocity used to scale excitation energy.
-/// * `profile_id` - Resonator profile to load for the voice.
-/// * `size` - Material size parameter forwarded to the voice.
-/// * `rust` - Material rust parameter forwarded to the voice.
-/// * `damage` - Material damage parameter forwarded to the voice.
-/// * `exciter_type` - Integer selector for the exciter model.
+    /// Trigger a note using default voice controls.
+    ///
+    /// This is the simple wrapper used when the caller does not need
+    /// per-note control overrides.
+    ///
+    /// # Arguments
+    ///
+    /// * `note` - MIDI note number for the new voice.
+    /// * `velocity` - MIDI velocity used to scale excitation energy.
+    /// * `profile_id` - Resonator profile to load for the voice.
+    /// * `size` - Material size parameter forwarded to the voice.
+    /// * `rust` - Material rust parameter forwarded to the voice.
+    /// * `damage` - Material damage parameter forwarded to the voice.
+    /// * `exciter_type` - Integer selector for the exciter model.
     pub fn note_on(
         &mut self,
         note: u8,
@@ -74,18 +74,18 @@ impl VoiceManager {
         );
     }
 
-/// Trigger a note with explicit voice controls.
-///
-/// # Arguments
-///
-/// * `note` - MIDI note number for the new voice.
-/// * `velocity` - MIDI velocity used to scale excitation energy.
-/// * `profile_id` - Resonator profile to load for the voice.
-/// * `size` - Material size parameter forwarded to the voice.
-/// * `rust` - Material rust parameter forwarded to the voice.
-/// * `damage` - Material damage parameter forwarded to the voice.
-/// * `exciter_type` - Integer selector for the exciter model.
-/// * `controls` - Complete per-voice control snapshot.
+    /// Trigger a note with explicit voice controls.
+    ///
+    /// # Arguments
+    ///
+    /// * `note` - MIDI note number for the new voice.
+    /// * `velocity` - MIDI velocity used to scale excitation energy.
+    /// * `profile_id` - Resonator profile to load for the voice.
+    /// * `size` - Material size parameter forwarded to the voice.
+    /// * `rust` - Material rust parameter forwarded to the voice.
+    /// * `damage` - Material damage parameter forwarded to the voice.
+    /// * `exciter_type` - Integer selector for the exciter model.
+    /// * `controls` - Complete per-voice control snapshot.
     pub fn note_on_with_controls(
         &mut self,
         note: u8,
@@ -159,15 +159,15 @@ impl VoiceManager {
         }
     }
 
-/// Render the current mono sample for the whole voice pool.
-///
-/// # Arguments
-///
-/// * `sample_rate` - Current host sample rate in hertz.
-///
-/// # Returns
-///
-/// The mixed mono output sample.
+    /// Render the current mono sample for the whole voice pool.
+    ///
+    /// # Arguments
+    ///
+    /// * `sample_rate` - Current host sample rate in hertz.
+    ///
+    /// # Returns
+    ///
+    /// The mixed mono output sample.
     pub fn process_sample(&mut self, sample_rate: u32) -> f32 {
         // Advance the shared frame clock so note age can participate in
         // tie-breaking during voice stealing.
@@ -181,16 +181,16 @@ impl VoiceManager {
         sum / MAX_VOICES as f32
     }
 
-/// Render the current stereo sample pair for the whole voice pool.
-///
-/// # Arguments
-///
-/// * `sample_rate` - Current host sample rate in hertz.
-/// * `width` - Stereo width forwarded to each voice.
-///
-/// # Returns
-///
-/// The mixed `(left, right)` output samples.
+    /// Render the current stereo sample pair for the whole voice pool.
+    ///
+    /// # Arguments
+    ///
+    /// * `sample_rate` - Current host sample rate in hertz.
+    /// * `width` - Stereo width forwarded to each voice.
+    ///
+    /// # Returns
+    ///
+    /// The mixed `(left, right)` output samples.
     pub fn process_sample_stereo(&mut self, sample_rate: u32, width: f32) -> (f32, f32) {
         // Advance the shared frame clock so note age can participate in
         // tie-breaking during voice stealing.
@@ -229,7 +229,7 @@ mod tests {
                 1.0,
                 0.0,
                 0.0,
-                0,
+                1,
             );
         }
 
@@ -257,7 +257,7 @@ mod tests {
                 1.0,
                 0.0,
                 0.0,
-                0,
+                2,
             );
         }
         manager.note_on(
@@ -267,7 +267,7 @@ mod tests {
             1.0,
             0.0,
             0.0,
-            0,
+            2,
         );
         let sample_rate = 48_000u32;
         let sample = manager.process_sample(sample_rate);
@@ -284,7 +284,7 @@ mod tests {
             1.0,
             0.0,
             0.0,
-            0,
+            2,
         );
         manager.note_on(
             64,
@@ -293,7 +293,7 @@ mod tests {
             1.0,
             0.0,
             0.0,
-            0,
+            2,
         );
         manager.note_off(60);
 
@@ -313,7 +313,7 @@ mod tests {
                 1.0,
                 0.0,
                 0.0,
-                0,
+                2,
             );
         }
         // Render enough frames for most voices to decay below their initial peak
@@ -337,7 +337,7 @@ mod tests {
             1.0,
             0.0,
             0.0,
-            0,
+            2,
         );
 
         // The new note should be present in the active voices
