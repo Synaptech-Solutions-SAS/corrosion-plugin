@@ -1,10 +1,4 @@
 <!DOCTYPE html><html lang="en"><head>
-    <script>
-        window.FontAwesomeConfig = {
-          autoReplaceSvg: 'nest'
-        };
-      </script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Corrosion VST3 Interface</title>
@@ -158,65 +152,115 @@
 
         <!-- Top Header Section -->
         <header id="header" class="h-24 md:h-32 border-b-4 border-concrete bg-opacity-90 bg-darkSteel flex flex-col md:flex-row items-center justify-between px-8 relative z-10">
-            <!-- Logo -->
-            <div class="flex items-center gap-4">
-                <div class="metal-panel p-2 rounded">
-                    <h1 class="text-4xl md:text-5xl stamped-text text-offWhite tracking-widest">CORROSION</h1>
-                </div>
-                <div class="hidden md:flex flex-col text-xs text-mutedGrey font-bold uppercase tracking-wider border-l-2 border-dangerRed pl-2">
-                    <span>Industrial Resonator</span>
-                    <span>Model: CR-89X</span>
+<script>window.FontAwesomeConfig = { autoReplaceSvg: "nest"};</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-SnH5WK+bZxgPHs44uWIX+LLJAJ9/2PkPKZ5QiAj6Ta86w+fsb2TkcmfRyVX3pBnMFcV7oQPJkl9QevSCWr3W6A==" crossorigin="anonymous" referrerpolicy="no-referrer">
+
+
+    <!-- Logo -->
+    <div class="flex items-center gap-4">
+        <div class="metal-panel p-2 rounded">
+            <h1 class="text-4xl md:text-5xl stamped-text text-offWhite tracking-widest">CORROSION</h1>
+        </div>
+        <div class="hidden md:flex flex-col text-xs text-mutedGrey font-bold uppercase tracking-wider border-l-2 border-dangerRed pl-2">
+            <span>Industrial Resonator</span>
+            <span>Model: CR-89X</span>
+        </div>
+    </div>
+
+    <!-- Preset Selection (Center) -->
+    <div class="flex flex-col items-center gap-2 mt-4 md:mt-0 metal-panel p-3 rounded min-w-[280px]">
+        <span class="text-[10px] uppercase font-bold text-mutedGrey tracking-wider">Preset Bank</span>
+        <div class="flex items-center gap-2 w-full">
+            <button class="bg-charcoal border border-concrete text-offWhite p-1.5 hover:border-safetyYellow transition-colors">
+                <i class="fa-solid fa-chevron-left text-xs"></i>
+            </button>
+            <select class="flex-1 bg-charcoal border-2 border-concrete text-offWhite text-sm p-2 font-bold uppercase tracking-wider outline-none focus:border-safetyYellow shadow-inner">
+                <option>Factory Default</option>
+                <option>Heavy Industrial</option>
+                <option>Rusted Chamber</option>
+                <option>Pneumatic Chaos</option>
+                <option>Steel Resonance</option>
+                <option>Concrete Echo</option>
+                <option>Metal Scrape</option>
+                <option>Motor Grind</option>
+            </select>
+            <button class="bg-charcoal border border-concrete text-offWhite p-1.5 hover:border-safetyYellow transition-colors">
+                <i class="fa-solid fa-chevron-right text-xs"></i>
+            </button>
+        </div>
+        <div class="flex gap-2 w-full">
+            <button class="flex-1 bg-charcoal border border-concrete text-mutedGrey text-[10px] uppercase py-1 hover:text-safetyYellow hover:border-safetyYellow transition-colors">
+                <i class="fa-solid fa-floppy-disk mr-1"></i>Save
+            </button>
+            <button class="flex-1 bg-charcoal border border-concrete text-mutedGrey text-[10px] uppercase py-1 hover:text-safetyYellow hover:border-safetyYellow transition-colors">
+                <i class="fa-solid fa-plus mr-1"></i>New
+            </button>
+            <button class="flex-1 bg-charcoal border border-concrete text-mutedGrey text-[10px] uppercase py-1 hover:text-dangerRed hover:border-dangerRed transition-colors">
+                <i class="fa-solid fa-trash mr-1"></i>Del
+            </button>
+        </div>
+    </div>
+
+    <!-- Global Controls -->
+    <div class="flex items-center gap-6 mt-4 md:mt-0 metal-panel p-3 rounded">
+        <!-- UI Scale & Mode -->
+        <div class="flex flex-col gap-2">
+            <div class="flex items-center gap-2">
+                <span class="text-xs uppercase font-bold text-mutedGrey">Scale</span>
+                <select class="bg-charcoal border border-concrete text-offWhite text-sm p-1 rounded outline-none focus:border-safetyYellow">
+                    <option>100%</option>
+                    <option>125%</option>
+                    <option>150%</option>
+                </select>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-xs uppercase font-bold text-mutedGrey">Mode</span>
+                <select class="bg-charcoal border border-concrete text-offWhite text-sm p-1 rounded outline-none focus:border-safetyYellow">
+                    <option>Eco</option>
+                    <option>Normal</option>
+                    <option>High</option>
+                    <option>Render</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="w-px h-8 bg-concrete"></div>
+
+        <!-- Output Levers -->
+        <div class="flex gap-4">
+            <div class="flex flex-col items-center">
+                <span class="text-[10px] uppercase font-bold text-mutedGrey mb-1">Output</span>
+                <div class="w-8 h-12 recessed-panel relative">
+                    <div class="absolute bottom-0 w-full h-3/4 bg-safetyYellow opacity-80 border-t-2 border-offWhite"></div>
                 </div>
             </div>
-
-            <!-- Global Controls -->
-            <div class="flex items-center gap-6 mt-4 md:mt-0 metal-panel p-3 rounded">
-                <!-- UI Scale -->
-                <div class="flex items-center gap-2">
-                    <span class="text-xs uppercase font-bold text-mutedGrey">Scale</span>
-                    <select class="bg-charcoal border border-concrete text-offWhite text-sm p-1 rounded outline-none focus:border-safetyYellow">
-                        <option>100%</option>
-                        <option>125%</option>
-                        <option>150%</option>
-                    </select>
-                </div>
-
-                <div class="w-px h-8 bg-concrete"></div>
-
-                <!-- Output Levers -->
-                <div class="flex gap-4">
-                    <div class="flex flex-col items-center">
-                        <span class="text-[10px] uppercase font-bold text-mutedGrey mb-1">Output</span>
-                        <div class="w-8 h-12 recessed-panel relative">
-                            <div class="absolute bottom-0 w-full h-3/4 bg-safetyYellow opacity-80 border-t-2 border-offWhite"></div>
-                        </div>
-                    </div>
-                    <div class="flex flex-col items-center">
-                        <span class="text-[10px] uppercase font-bold text-mutedGrey mb-1">Width</span>
-                        <div class="w-8 h-12 recessed-panel relative">
-                            <div class="absolute bottom-0 w-full h-1/2 bg-rustOrange opacity-80 border-t-2 border-offWhite"></div>
-                        </div>
-                    </div>
-                    <div class="flex flex-col items-center">
-                        <span class="text-[10px] uppercase font-bold text-mutedGrey mb-1">Body</span>
-                        <div class="w-8 h-12 recessed-panel relative">
-                            <div class="absolute bottom-0 w-full h-full bg-dangerRed opacity-80 border-t-2 border-offWhite"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="w-px h-8 bg-concrete"></div>
-
-                <!-- Peak Meter -->
-                <div class="flex flex-col w-32">
-                    <span class="text-[10px] uppercase font-bold text-mutedGrey mb-1 text-right">Master Out</span>
-                    <div class="h-4 meter-bg rounded-sm overflow-hidden relative">
-                        <div class="meter-bar"></div>
-                        <div class="absolute top-0 right-2 w-px h-full bg-dangerRed"></div>
-                    </div>
+            <div class="flex flex-col items-center">
+                <span class="text-[10px] uppercase font-bold text-mutedGrey mb-1">Width</span>
+                <div class="w-8 h-12 recessed-panel relative">
+                    <div class="absolute bottom-0 w-full h-1/2 bg-rustOrange opacity-80 border-t-2 border-offWhite"></div>
                 </div>
             </div>
-        </header>
+            <div class="flex flex-col items-center">
+                <span class="text-[10px] uppercase font-bold text-mutedGrey mb-1">Body</span>
+                <div class="w-8 h-12 recessed-panel relative">
+                    <div class="absolute bottom-0 w-full h-full bg-dangerRed opacity-80 border-t-2 border-offWhite"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="w-px h-8 bg-concrete"></div>
+
+        <!-- Peak Meter -->
+        <div class="flex flex-col w-32">
+            <span class="text-[10px] uppercase font-bold text-mutedGrey mb-1 text-right">Master Out</span>
+            <div class="h-4 meter-bg rounded-sm overflow-hidden relative">
+                <div class="meter-bar"></div>
+                <div class="absolute top-0 right-2 w-px h-full bg-dangerRed"></div>
+            </div>
+        </div>
+    </div>
+</header>
 
         <!-- Main Content Area -->
         <main class="flex-1 grid grid-cols-1 md:grid-cols-3 gap-6 p-6 relative z-10 overflow-y-auto">

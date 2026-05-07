@@ -96,6 +96,10 @@ pub struct CorrosionParams {
     #[id = "object"]
     pub object: IntParam,
 
+    /// Selects between the shared modal profile path and the per-object algorithmic path.
+    #[id = "complex_algo"]
+    pub complex_algo: IntParam,
+
     /// Quality mode (0=Eco, 1=Normal, 2=High, 3=Render)
     /// Controls CPU/quality tradeoff for post-processing and oversampling.
     #[id = "quality_mode"]
@@ -1033,6 +1037,26 @@ pub fn object_param(default: i32) -> IntParam {
         }))
 }
 
+pub fn complex_algo_param(default: i32) -> IntParam {
+    IntParam::new(
+        "Complex Algo",
+        default.clamp(0, 1),
+        IntRange::Linear { min: 0, max: 1 },
+    )
+    .with_value_to_string(Arc::new(|value| match value {
+        0 => "Off".to_string(),
+        1 => "On".to_string(),
+        _ => "Off".to_string(),
+    }))
+    .with_string_to_value(Arc::new(|string| {
+        match string.trim().to_ascii_lowercase().as_str() {
+            "off" | "0" | "false" => Some(0),
+            "on" | "1" | "true" => Some(1),
+            _ => None,
+        }
+    }))
+}
+
 pub fn quality_mode_param(default: i32) -> IntParam {
     IntParam::new("Quality Mode", default, IntRange::Linear { min: 0, max: 3 })
         .with_value_to_string(Arc::new(|value| {
@@ -1077,6 +1101,7 @@ impl Default for CorrosionParams {
             // Sound generation defaults
             exciter: exciter_param(ExciterType::HandStrike.to_int()),
             object: object_param(0), // Pipe
+            complex_algo: complex_algo_param(0),
             quality_mode: quality_mode_param(QualityMode::Normal.to_int()),
 
             // Object transformation defaults

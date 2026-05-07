@@ -26,6 +26,7 @@ fn preset_roundtrip_save_and_load() {
         width: 0.5,
         body: 0.2,
         quality_mode: 1,
+        complex_algo: 0,
         extra: PresetParameters::default(),
     };
 
@@ -74,6 +75,7 @@ fn expanded_parameters_roundtrip() {
         width: 2.0,
         body: 4.0,
         quality_mode: 3,
+        complex_algo: 1,
         extra: PresetParameters::default(),
     };
     preset.extra.drive_amount = 3.2;
@@ -98,6 +100,7 @@ fn expanded_parameters_roundtrip() {
     assert_eq!(params.space_amount.value(), 0.8);
     assert_eq!(params.analog_ceiling.value(), 0.7);
     assert_eq!(params.diode_softness.value(), 0.9);
+    assert_eq!(params.complex_algo.value(), 1);
     assert_eq!(params.hand_mass.value(), 2.4);
     assert_eq!(params.pipe_ring_decay.value(), 0.991);
     assert_eq!(params.ridge_spacing.value(), 0.08);
@@ -174,6 +177,7 @@ fn quality_mode_preset_roundtrip() {
         width: 0.0,
         body: 0.0,
         quality_mode: 0,
+        complex_algo: 1,
         extra: PresetParameters::default(),
     };
 
@@ -181,8 +185,10 @@ fn quality_mode_preset_roundtrip() {
     preset.save(&path).unwrap();
     let loaded = Preset::load(&path).unwrap();
     assert_eq!(preset.quality_mode, loaded.quality_mode);
+    assert_eq!(preset.complex_algo, loaded.complex_algo);
 
     let params = loaded.into_params();
     assert_eq!(params.quality_mode.value(), 0);
+    assert_eq!(params.complex_algo.value(), 1);
     let _ = fs::remove_file(path);
 }

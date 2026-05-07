@@ -48,6 +48,8 @@ pub fn midi_to_hz(note: u8) -> f32 {
 /// These values are copied into the voice so the audio thread can
 /// trigger and render without touching shared state.
 pub struct VoiceControls {
+    /// Selects the algorithmic resonator constructor instead of the modal profile table.
+    pub complex_algo: i32,
     /// Attack time for hit and specialty envelopes, in seconds.
     pub env_attack: f32,
     /// Decay time for the specialty ADSR, in seconds.
@@ -235,6 +237,7 @@ pub struct VoiceControls {
 impl Default for VoiceControls {
     fn default() -> Self {
         Self {
+            complex_algo: 0,
             env_attack: 0.05,
             env_decay: 0.3,
             env_sustain: 0.7,
@@ -726,18 +729,33 @@ impl Voice {
         let velocity_norm = (velocity / 127.0).clamp(0.0, 1.0);
         let clamped_damage = damage.clamp(0.0, 10.0);
         self.damage_amount = clamped_damage;
-        self.resonator = ModalResonator::with_profile_controls_and_note(
-            profile_id,
-            SizeScale::new(size),
-            RustAmount::new(rust),
-            DamageAmount::new(clamped_damage),
-            ThicknessAmount::new(controls.thickness),
-            HeatAmount::new(controls.heat),
-            SludgeAmount::new(controls.sludge),
-            midi_to_hz(note),
-            controls.res_damping,
-            controls.res_brightness,
-        );
+        self.resonator = if controls.complex_algo != 0 {
+            ModalResonator::with_algorithm_controls_and_note(
+                profile_id,
+                SizeScale::new(size),
+                RustAmount::new(rust),
+                DamageAmount::new(clamped_damage),
+                ThicknessAmount::new(controls.thickness),
+                HeatAmount::new(controls.heat),
+                SludgeAmount::new(controls.sludge),
+                midi_to_hz(note),
+                controls.res_damping,
+                controls.res_brightness,
+            )
+        } else {
+            ModalResonator::with_profile_controls_and_note(
+                profile_id,
+                SizeScale::new(size),
+                RustAmount::new(rust),
+                DamageAmount::new(clamped_damage),
+                ThicknessAmount::new(controls.thickness),
+                HeatAmount::new(controls.heat),
+                SludgeAmount::new(controls.sludge),
+                midi_to_hz(note),
+                controls.res_damping,
+                controls.res_brightness,
+            )
+        };
         self.resonator.set_interaction_params(
             controls.strike_position,
             controls.coupling_stiffness,
@@ -1409,5 +1427,57 @@ mod tests {
             .sum();
 
         assert!(aggressive_energy > soft_energy, "expected bow controls to change output: soft={soft_energy}, aggressive={aggressive_energy}");
+    }
+
+    #[test]
+    fn complex_algo_toggle_changes_resonator_output() {
+        let mut modal_voice = Voice::new();
+        let mut complex_voice = Voice::new();
+
+        modal_voice.note_on_with_controls(
+            60,
+            100.0,
+            ModalProfileId::Plate,
+            0,
+            1.0,
+            0.0,
+            0.0,
+            2,
+            VoiceControls {
+                complex_algo: 0,
+                ..VoiceControls::default()
+            },
+        );
+        complex_voice.note_on_with_controls(
+            60,
+            100.0,
+            ModalProfileId::Plate,
+            0,
+            1.0,
+            0.0,
+            0.0,
+            2,
+            VoiceControls {
+                complex_algo: 1,
+                ..VoiceControls::default()
+            },
+        );
+
+        let sample_rate = 48_000u32;
+        let mut modal_energy = 0.0f32;
+        let mut complex_energy = 0.0f32;
+        for _ in 0..2048 {
+            let modal_sample = modal_voice.process_sample(sample_rate);
+            let complex_sample = complex_voice.process_sample(sample_rate);
+            assert!(modal_sample.is_finite());
+            assert!(complex_sample.is_finite());
+            modal_energy += modal_sample.abs();
+            complex_energy += complex_sample.abs();
+        }
+
+        assert!(
+            (modal_energy - complex_energy).abs() > 0.01,
+            "complex algo toggle should measurably change resonator output"
+        );
     }
 }

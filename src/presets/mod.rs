@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::params::{object_param, CorrosionParams, Object};
+use crate::params::{complex_algo_param, object_param, CorrosionParams, Object};
 use nih_plug::prelude::{util, FloatParam, FloatRange, IntParam, IntRange};
 
 pub const PRESET_VERSION: &str = "3";
@@ -453,6 +453,8 @@ pub struct Preset {
     #[serde(default = "default_quality_mode")]
     pub quality_mode: i32,
     #[serde(default)]
+    pub complex_algo: i32,
+    #[serde(default)]
     pub extra: PresetParameters,
 }
 
@@ -475,6 +477,7 @@ impl Preset {
             width: params.width.value(),
             body: params.body.value(),
             quality_mode: params.quality_mode.value(),
+            complex_algo: params.complex_algo.value(),
             extra: PresetParameters::from_params(params),
         }
     }
@@ -491,6 +494,7 @@ impl Preset {
         params.width = float_param("Width", self.width, -2.0, 3.0);
         params.body = float_param("Body", self.body, 0.0, 5.0);
         params.quality_mode = crate::params::quality_mode_param(self.quality_mode);
+        params.complex_algo = complex_algo_param(self.complex_algo);
         self.extra.apply_to(&mut params);
         params
     }
@@ -515,6 +519,7 @@ impl Preset {
         sanitized.version = self.version;
         sanitized.object = self.object;
         sanitized.exciter = params.exciter.value();
+        sanitized.complex_algo = params.complex_algo.value();
         sanitized
     }
 }

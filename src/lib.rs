@@ -229,6 +229,7 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
             // This bundles parameters that need to be passed to the voice
             let controls = VoiceControls {
                 env_attack: plugin.params.env_attack.value(),
+                complex_algo: plugin.params.complex_algo.value(),
                 env_decay: plugin.params.env_decay.value(),
                 env_sustain: plugin.params.env_sustain.value(),
                 env_release: plugin.params.env_release.value(),

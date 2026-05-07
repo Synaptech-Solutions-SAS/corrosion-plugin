@@ -996,7 +996,7 @@ fn industrial_knob(
     scale: f32,
     large: bool,
 ) -> egui::Response {
-    let radius = if large { 22.0 * scale } else { 18.0 * scale };
+    let radius = if large { 25.0 * scale } else { 20.0 * scale };
     let knob_height = radius * 2.0;
     let label_height = 14.0 * scale;
     let value_height = 14.0 * scale;
@@ -1268,11 +1268,11 @@ fn industrial_vfader(
     accent: egui::Color32,
     scale: f32,
 ) -> egui::Response {
-    let track_width = 14.0 * scale;
+    let track_width = 20.0 * scale;
     let track_height = 120.0 * scale;
-    let thumb_width = 18.0 * scale;
-    let thumb_height = 12.0 * scale;
-    let desired_size = egui::vec2(track_width + 30.0 * scale, track_height + 44.0 * scale);
+    let thumb_width = 24.0 * scale;
+    let thumb_height = 14.0 * scale;
+    let desired_size = egui::vec2(track_width + 34.0 * scale, track_height + 44.0 * scale);
 
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click_and_drag());
 
@@ -1605,51 +1605,78 @@ fn render_header(
 ) {
     let panel = metal_panel(scale);
     panel.show(ui, |ui| {
-        ui.horizontal(|ui| {
-            // CORROSION title
-            ui.vertical(|ui| {
-                ui.label(
-                    egui::RichText::new("CORROSION")
-                        .size(20.0 * scale)
-                        .color(OFF_WHITE)
-                        .strong(),
-                );
-                ui.label(
-                    egui::RichText::new("Industrial Resonator  |  CR-89X")
-                        .size(8.0 * scale)
-                        .color(MUTED_GREY),
-                );
-            });
-
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                // Master meter (static decoration)
-                let meter_width = 100.0 * scale;
-                let meter_height = 12.0 * scale;
-                let (meter_rect, _) = ui.allocate_exact_size(
-                    egui::vec2(meter_width, meter_height + 12.0 * scale),
+        ui.columns(3, |columns| {
+            columns[0].horizontal(|ui| {
+                metal_panel(scale).show(ui, |ui| {
+                    ui.add_space(2.0 * scale);
+                    ui.label(
+                        egui::RichText::new("CORROSION")
+                            .size(22.0 * scale)
+                            .color(OFF_WHITE)
+                            .strong(),
+                    );
+                });
+                ui.add_space(8.0 * scale);
+                let (accent_rect, _) = ui.allocate_exact_size(
+                    egui::vec2(2.0 * scale, 24.0 * scale),
                     egui::Sense::hover(),
                 );
-                let painter = ui.painter();
-                painter.text(
-                    egui::pos2(meter_rect.right(), meter_rect.min.y),
-                    egui::Align2::RIGHT_TOP,
-                    "MASTER OUT",
-                    egui::FontId::proportional(8.0 * scale),
-                    MUTED_GREY,
-                );
-                let bar_rect = egui::Rect::from_min_size(
-                    egui::pos2(meter_rect.min.x, meter_rect.min.y + 12.0 * scale),
-                    egui::vec2(meter_width, meter_height),
-                );
-                paint_meter(&painter, bar_rect, 0.7, scale);
+                ui.painter().rect_filled(accent_rect, 0.0, DANGER_RED);
+                ui.add_space(4.0 * scale);
+                ui.vertical(|ui| {
+                    ui.label(
+                        egui::RichText::new("INDUSTRIAL RESONATOR")
+                            .size(8.0 * scale)
+                            .color(MUTED_GREY),
+                    );
+                    ui.label(
+                        egui::RichText::new("MODEL: CR-89X")
+                            .size(8.0 * scale)
+                            .color(MUTED_GREY),
+                    );
+                });
+            });
+
+            columns[1].vertical_centered(|ui| {
+                render_preset_loader(ui, params, setter, state, scale);
+            });
+
+            columns[2].horizontal(|ui| {
+                ui.vertical(|ui| {
+                    industrial_combo(
+                        ui,
+                        "ui-scale-header",
+                        "SCALE",
+                        &params.ui_scale,
+                        &[
+                            (0, "50%"),
+                            (1, "75%"),
+                            (2, "100%"),
+                            (3, "125%"),
+                            (4, "150%"),
+                        ],
+                        setter,
+                        MUTED_GREY,
+                        scale,
+                    );
+                    industrial_combo(
+                        ui,
+                        "quality-mode-header",
+                        "MODE",
+                        &params.quality_mode,
+                        &[(0, "Eco"), (1, "Normal"), (2, "High"), (3, "Render")],
+                        setter,
+                        SAFETY_YELLOW,
+                        scale,
+                    );
+                });
 
                 paint_vseparator(ui, scale);
 
-                // Output / Width / Body vertical faders
                 ui.horizontal(|ui| {
                     vfader_global(
                         ui,
-                        "OUT",
+                        "OUTPUT",
                         &params.output,
                         0.0,
                         util::db_to_gain(40.0),
@@ -1681,41 +1708,25 @@ fn render_header(
 
                 paint_vseparator(ui, scale);
 
-                // UI Scale
-                industrial_combo(
-                    ui,
-                    "ui-scale-header",
-                    "SCALE",
-                    &params.ui_scale,
-                    &[
-                        (0, "50%"),
-                        (1, "75%"),
-                        (2, "100%"),
-                        (3, "125%"),
-                        (4, "150%"),
-                    ],
-                    setter,
+                let meter_width = 110.0 * scale;
+                let meter_height = 12.0 * scale;
+                let (meter_rect, _) = ui.allocate_exact_size(
+                    egui::vec2(meter_width, meter_height + 12.0 * scale),
+                    egui::Sense::hover(),
+                );
+                let painter = ui.painter();
+                painter.text(
+                    egui::pos2(meter_rect.right(), meter_rect.min.y),
+                    egui::Align2::RIGHT_TOP,
+                    "MASTER OUT",
+                    egui::FontId::proportional(8.0 * scale),
                     MUTED_GREY,
-                    scale,
                 );
-
-                paint_vseparator(ui, scale);
-
-                industrial_combo(
-                    ui,
-                    "quality-mode-header",
-                    "QUALITY",
-                    &params.quality_mode,
-                    &[(0, "Eco"), (1, "Normal"), (2, "High"), (3, "Render")],
-                    setter,
-                    SAFETY_YELLOW,
-                    scale,
+                let bar_rect = egui::Rect::from_min_size(
+                    egui::pos2(meter_rect.min.x, meter_rect.min.y + 12.0 * scale),
+                    egui::vec2(meter_width, meter_height),
                 );
-
-                paint_vseparator(ui, scale);
-
-                // Preset loader
-                render_preset_loader(ui, params, setter, state, scale);
+                paint_meter(&painter, bar_rect, 0.7, scale);
             });
         });
     });
@@ -1826,72 +1837,103 @@ fn render_preset_loader(
     state: &mut EditorUiState,
     scale: f32,
 ) {
-    ui.vertical(|ui| {
-        ui.label(
-            egui::RichText::new("PRESET")
-                .size(8.0 * scale)
-                .color(MUTED_GREY),
-        );
-        ui.horizontal(|ui| {
-            if state.factory_presets.is_empty() {
-                ui.label(
-                    egui::RichText::new("No presets")
-                        .size(9.0 * scale)
-                        .color(MUTED_GREY),
-                );
-                return;
-            }
+    metal_panel(scale).show(ui, |ui| {
+        ui.vertical_centered(|ui| {
+            ui.label(
+                egui::RichText::new("PRESET BANK")
+                    .size(7.5 * scale)
+                    .color(MUTED_GREY),
+            );
+            ui.horizontal(|ui| {
+                if state.factory_presets.is_empty() {
+                    ui.label(
+                        egui::RichText::new("No presets")
+                            .size(9.0 * scale)
+                            .color(MUTED_GREY),
+                    );
+                    return;
+                }
 
-            state.selected_factory_preset = state
-                .selected_factory_preset
-                .min(state.factory_presets.len().saturating_sub(1));
-            let selected_name = state.factory_presets[state.selected_factory_preset]
-                .name
-                .as_str();
+                state.selected_factory_preset = state
+                    .selected_factory_preset
+                    .min(state.factory_presets.len().saturating_sub(1));
+                let selected_name = state.factory_presets[state.selected_factory_preset]
+                    .name
+                    .as_str();
 
-            egui::ComboBox::from_id_salt("factory-preset-loader")
-                .selected_text(
-                    egui::RichText::new(selected_name)
-                        .size(9.0 * scale)
-                        .color(OFF_WHITE),
-                )
-                .show_ui(ui, |ui| {
-                    for (index, preset) in state.factory_presets.iter().enumerate() {
-                        if ui
-                            .selectable_label(
-                                index == state.selected_factory_preset,
-                                egui::RichText::new(&preset.name).size(9.0 * scale),
-                            )
-                            .clicked()
-                        {
-                            state.selected_factory_preset = index;
-                        }
-                    }
-                });
-
-            if ui
-                .button(egui::RichText::new("LOAD").size(9.0 * scale))
-                .clicked()
-            {
-                let entry = state.factory_presets[state.selected_factory_preset].clone();
-                match Preset::load(&entry.path) {
-                    Ok(preset) => {
+                let arrow_size = egui::vec2(18.0 * scale, 18.0 * scale);
+                if ui
+                    .add_sized(
+                        arrow_size,
+                        egui::Button::new(egui::RichText::new("‹").size(10.0 * scale)),
+                    )
+                    .clicked()
+                {
+                    state.selected_factory_preset = if state.selected_factory_preset == 0 {
+                        state.factory_presets.len() - 1
+                    } else {
+                        state.selected_factory_preset - 1
+                    };
+                    let entry = state.factory_presets[state.selected_factory_preset].clone();
+                    if let Ok(preset) = Preset::load(&entry.path) {
                         apply_preset(params, setter, &preset);
                         state.last_preset_status = Some(format!("Loaded {}", preset.name));
                     }
-                    Err(error) => {
-                        state.last_preset_status = Some(format!("Failed: {error}"));
+                }
+
+                egui::ComboBox::from_id_salt("factory-preset-loader")
+                    .selected_text(
+                        egui::RichText::new(selected_name)
+                            .size(9.0 * scale)
+                            .color(OFF_WHITE),
+                    )
+                    .show_ui(ui, |ui| {
+                        for (index, preset) in state.factory_presets.iter().enumerate() {
+                            if ui
+                                .selectable_label(
+                                    index == state.selected_factory_preset,
+                                    egui::RichText::new(&preset.name).size(9.0 * scale),
+                                )
+                                .clicked()
+                            {
+                                state.selected_factory_preset = index;
+                                if let Ok(loaded) = Preset::load(&preset.path) {
+                                    apply_preset(params, setter, &loaded);
+                                    state.last_preset_status =
+                                        Some(format!("Loaded {}", loaded.name));
+                                }
+                            }
+                        }
+                    });
+
+                if ui
+                    .add_sized(
+                        arrow_size,
+                        egui::Button::new(egui::RichText::new("›").size(10.0 * scale)),
+                    )
+                    .clicked()
+                {
+                    state.selected_factory_preset =
+                        (state.selected_factory_preset + 1) % state.factory_presets.len();
+                    let entry = state.factory_presets[state.selected_factory_preset].clone();
+                    if let Ok(preset) = Preset::load(&entry.path) {
+                        apply_preset(params, setter, &preset);
+                        state.last_preset_status = Some(format!("Loaded {}", preset.name));
                     }
                 }
+            });
+            ui.horizontal(|ui| {
+                let save_button = egui::Button::new(egui::RichText::new("💾").size(10.0 * scale));
+                let _ = ui.add_enabled(false, save_button);
+            });
+            if let Some(status) = &state.last_preset_status {
+                ui.label(
+                    egui::RichText::new(status)
+                        .size(8.0 * scale)
+                        .color(MUTED_GREY),
+                );
             }
         });
-        if let Some(status) = &state.last_preset_status {
-            ui.label(
-                egui::RichText::new(status)
-                    .size(8.0 * scale)
-                    .color(MUTED_GREY),
-            );
-        }
     });
 }
 
@@ -1912,6 +1954,7 @@ fn apply_preset(params: &CorrosionParams, setter: &ParamSetter, preset: &Preset)
 
     set_int!(object);
     set_int!(exciter);
+    set_int!(complex_algo);
     set_int!(quality_mode);
     set_int!(ui_scale);
     set_int!(loop_mode);
@@ -2089,7 +2132,7 @@ fn render_exciter_column(
         let rect = ui.available_rect_before_wrap();
         ui.painter().line_segment(
             [rect.left_top(), egui::pos2(rect.right(), rect.left_top().y)],
-            egui::Stroke::new(2.0 * scale, CONCRETE),
+            egui::Stroke::new(2.0 * scale, SAFETY_YELLOW),
         );
         ui.add_space(4.0 * scale);
 
@@ -2488,6 +2531,18 @@ fn render_resonator_column(
                 .size(8.0 * scale)
                 .color(MUTED_GREY),
         );
+        let mut complex_algo_enabled = params.complex_algo.value() != 0;
+        if ui
+            .checkbox(
+                &mut complex_algo_enabled,
+                egui::RichText::new("Complex Algo").size(8.5 * scale),
+            )
+            .changed()
+        {
+            setter.begin_set_parameter(&params.complex_algo);
+            setter.set_parameter(&params.complex_algo, i32::from(complex_algo_enabled));
+            setter.end_set_parameter(&params.complex_algo);
+        }
         ui.add_space(4.0 * scale);
 
         // Resonator controls (knobs)
@@ -2497,23 +2552,38 @@ fn render_resonator_column(
                 section_heading(ui, panel_spec.title, RUST_ORANGE, scale);
                 let controls = panel_spec.controls;
                 let knob_count = controls.len();
-                let cols = if knob_count <= 3 { knob_count } else { 3 };
-                ui.columns(cols, |columns| {
-                    for (i, spec) in controls.iter().enumerate() {
-                        let col_idx = i % cols;
-                        industrial_knob(
-                            &mut columns[col_idx],
-                            spec.label,
-                            resonator_param_ref(params, spec.id),
-                            spec.min,
-                            spec.max,
-                            setter,
-                            RUST_ORANGE,
-                            scale,
-                            false,
-                        );
-                    }
-                });
+                let cols = if knob_count <= 3 {
+                    knob_count
+                } else {
+                    (knob_count as f32).sqrt().ceil() as usize
+                };
+                let knob_width = 48.0 * scale;
+                let knob_gap = 18.0 * scale;
+                for row in controls.chunks(cols) {
+                    let row_width = row.len() as f32 * knob_width
+                        + row.len().saturating_sub(1) as f32 * knob_gap;
+                    let offset = ((ui.available_width() - row_width) / 2.0).max(0.0);
+                    ui.horizontal(|ui| {
+                        ui.add_space(offset);
+                        for (index, spec) in row.iter().enumerate() {
+                            industrial_knob(
+                                ui,
+                                spec.label,
+                                resonator_param_ref(params, spec.id),
+                                spec.min,
+                                spec.max,
+                                setter,
+                                RUST_ORANGE,
+                                scale,
+                                false,
+                            );
+                            if index + 1 < row.len() {
+                                ui.add_space(knob_gap);
+                            }
+                        }
+                    });
+                    ui.add_space(6.0 * scale);
+                }
             });
         }
 
@@ -2649,7 +2719,7 @@ fn render_processing_column(
         let rect = ui.available_rect_before_wrap();
         ui.painter().line_segment(
             [rect.left_top(), egui::pos2(rect.right(), rect.left_top().y)],
-            egui::Stroke::new(2.0 * scale, DANGER_RED),
+            egui::Stroke::new(2.0 * scale, CONCRETE),
         );
         ui.add_space(4.0 * scale);
 
@@ -2657,7 +2727,7 @@ fn render_processing_column(
         let recessed = recessed_panel(scale);
         recessed.show(ui, |ui| {
             section_heading(ui, "Filter Bank", OFF_WHITE, scale);
-            let large_knob_w = 22.0 * scale * 2.0 + 8.0 * scale;
+            let large_knob_w = 58.0 * scale;
             let cutoff_offset = ((ui.available_width() - large_knob_w) / 2.0).max(0.0);
             ui.horizontal(|ui| {
                 ui.add_space(cutoff_offset);
@@ -2674,8 +2744,8 @@ fn render_processing_column(
                 );
             });
             ui.add_space(4.0 * scale);
-            let small_knob_w = 18.0 * scale * 2.0 + 8.0 * scale;
-            let pair_w = 2.0 * small_knob_w + 16.0 * scale;
+            let small_knob_w = 48.0 * scale;
+            let pair_w = 2.0 * small_knob_w + 24.0 * scale;
             let pair_offset = ((ui.available_width() - pair_w) / 2.0).max(0.0);
             ui.horizontal(|ui| {
                 ui.add_space(pair_offset);
@@ -2690,7 +2760,7 @@ fn render_processing_column(
                     scale,
                     false,
                 );
-                ui.add_space(16.0 * scale);
+                ui.add_space(24.0 * scale);
                 industrial_knob(
                     ui,
                     "Tolerance",

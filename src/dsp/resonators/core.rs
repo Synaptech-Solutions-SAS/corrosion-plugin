@@ -6,6 +6,22 @@
 
 use std::f32::consts::PI;
 
+use crate::dsp::resonators::{
+    ChainResonator, CoilSpringResonator, IBeamResonator, IndustrialCogResonator, PipeResonator,
+    PlateResonator, ResonatorAlgorithm, SheetMetalResonator, TankResonator, TautCableResonator,
+};
+
+#[derive(Clone, Copy)]
+struct AlgorithmTransformControls {
+    rust_amount: crate::dsp::RustAmount,
+    damage_amount: crate::dsp::DamageAmount,
+    thickness_amount: crate::dsp::ThicknessAmount,
+    heat_amount: crate::dsp::HeatAmount,
+    sludge_amount: crate::dsp::SludgeAmount,
+    damping: f32,
+    brightness: f32,
+}
+
 #[derive(Clone, Copy, Debug)]
 /// Coefficients for a damped second-order modal resonator.
 pub struct ResonatorCoefficients {
@@ -96,6 +112,104 @@ pub struct ModalResonator {
 
 impl ModalResonator {
     const REFERENCE_PITCH_HZ: f32 = 220.0;
+
+    fn from_mode_specs(
+        profile_id: crate::dsp::ModalProfileId,
+        modes: Vec<crate::dsp::ModalModeSpec>,
+    ) -> Self {
+        let modes = modes
+            .into_iter()
+            .map(SecondOrderMode::new)
+            .collect::<Vec<_>>();
+        let mut interaction_bus = crate::dsp::BidirectionalInteractionBus::new();
+        interaction_bus.initialize(modes.len());
+
+        Self {
+            profile: profile_id,
+            size_scale: crate::dsp::SizeScale::default(),
+            rust_amount: crate::dsp::RustAmount::default(),
+            damage_amount: crate::dsp::DamageAmount::default(),
+            thickness_amount: crate::dsp::ThicknessAmount::default(),
+            heat_amount: crate::dsp::HeatAmount::default(),
+            sludge_amount: crate::dsp::SludgeAmount::default(),
+            modes,
+            interaction_bus,
+            last_output: 0.0,
+            current_output: 0.0,
+        }
+    }
+
+    fn transform_algorithm_modes(
+        mut modes: Vec<crate::dsp::ModalModeSpec>,
+        controls: AlgorithmTransformControls,
+    ) -> Vec<crate::dsp::ModalModeSpec> {
+        let mode_count = modes.len().max(1);
+        let mut transformed = Vec::new();
+
+        for (index, mode) in modes.drain(..).enumerate() {
+            let mode_weight = if mode_count <= 1 {
+                0.0
+            } else {
+                index as f32 / (mode_count - 1) as f32
+            };
+            let rusted = mode.corroded(controls.rust_amount, index, mode_count);
+            let thickened = rusted.thickened(controls.thickness_amount, index);
+            let heated = thickened.heated(controls.heat_amount);
+            let sludge_loaded = heated.sludge_loaded(controls.sludge_amount);
+            let damaged = sludge_loaded.damaged(controls.damage_amount, index, mode_count);
+
+            transformed.extend(damaged.into_iter().map(|expanded| {
+                expanded.adjusted_for_controls(controls.damping, controls.brightness, mode_weight)
+            }));
+        }
+
+        transformed
+    }
+
+    fn generate_algorithm_modes(
+        profile_id: crate::dsp::ModalProfileId,
+        size_scale: crate::dsp::SizeScale,
+        target_frequency_hz: f32,
+    ) -> Vec<crate::dsp::ModalModeSpec> {
+        let mode_count = crate::dsp::ModalProfile::from_id(profile_id)
+            .mode_count()
+            .max(1);
+
+        match profile_id {
+            crate::dsp::ModalProfileId::Pipe => {
+                PipeResonator::default().generate_modes(target_frequency_hz, mode_count, size_scale)
+            }
+            crate::dsp::ModalProfileId::Plate => PlateResonator::default().generate_modes(
+                target_frequency_hz,
+                mode_count,
+                size_scale,
+            ),
+            crate::dsp::ModalProfileId::Tank => {
+                TankResonator::default().generate_modes(target_frequency_hz, mode_count, size_scale)
+            }
+            crate::dsp::ModalProfileId::Chain => ChainResonator::default().generate_modes(
+                target_frequency_hz,
+                mode_count,
+                size_scale,
+            ),
+            crate::dsp::ModalProfileId::IBeam => IBeamResonator::default().generate_modes(
+                target_frequency_hz,
+                mode_count,
+                size_scale,
+            ),
+            crate::dsp::ModalProfileId::TautCable => TautCableResonator::default().generate_modes(
+                target_frequency_hz,
+                mode_count,
+                size_scale,
+            ),
+            crate::dsp::ModalProfileId::CoilSpring => CoilSpringResonator::default()
+                .generate_modes(target_frequency_hz, mode_count, size_scale),
+            crate::dsp::ModalProfileId::SheetMetal => SheetMetalResonator::default()
+                .generate_modes(target_frequency_hz, mode_count, size_scale),
+            crate::dsp::ModalProfileId::IndustrialCog => IndustrialCogResonator::default()
+                .generate_modes(target_frequency_hz, mode_count, size_scale),
+        }
+    }
 
     // Internal constructor intentionally mirrors all modal control transforms.
     #[allow(clippy::too_many_arguments)]
@@ -262,6 +376,35 @@ impl ModalResonator {
             damping,
             brightness,
         )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_algorithm_controls_and_note(
+        profile_id: crate::dsp::ModalProfileId,
+        size_scale: crate::dsp::SizeScale,
+        rust_amount: crate::dsp::RustAmount,
+        damage_amount: crate::dsp::DamageAmount,
+        thickness_amount: crate::dsp::ThicknessAmount,
+        heat_amount: crate::dsp::HeatAmount,
+        sludge_amount: crate::dsp::SludgeAmount,
+        target_frequency_hz: f32,
+        damping: f32,
+        brightness: f32,
+    ) -> Self {
+        let raw_modes = Self::generate_algorithm_modes(profile_id, size_scale, target_frequency_hz);
+        let transformed = Self::transform_algorithm_modes(
+            raw_modes,
+            AlgorithmTransformControls {
+                rust_amount,
+                damage_amount,
+                thickness_amount,
+                heat_amount,
+                sludge_amount,
+                damping,
+                brightness,
+            },
+        );
+        Self::from_mode_specs(profile_id, transformed)
     }
 }
 
