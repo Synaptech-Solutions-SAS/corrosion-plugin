@@ -2390,25 +2390,38 @@ fn render_envelope(
                 scale,
             );
             ui.horizontal(|ui| {
-                industrial_combo(
-                    ui,
-                    "loop-start",
-                    "Start",
-                    &params.loop_start_stage,
-                    &[(0, "0"), (1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "5")],
-                    setter,
-                    SAFETY_YELLOW,
-                    scale,
+                let combo_width = ui.available_width() / 2.0;
+                ui.allocate_ui_with_layout(
+                    egui::vec2(combo_width, ui.available_height()),
+                    egui::Layout::top_down(egui::Align::LEFT),
+                    |ui| {
+                        industrial_combo(
+                            ui,
+                            "loop-start",
+                            "Start",
+                            &params.loop_start_stage,
+                            &[(0, "0"), (1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "5")],
+                            setter,
+                            SAFETY_YELLOW,
+                            scale,
+                        );
+                    },
                 );
-                industrial_combo(
-                    ui,
-                    "loop-end",
-                    "End",
-                    &params.loop_end_stage,
-                    &[(0, "0"), (1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "5")],
-                    setter,
-                    SAFETY_YELLOW,
-                    scale,
+                ui.allocate_ui_with_layout(
+                    egui::vec2(combo_width, ui.available_height()),
+                    egui::Layout::top_down(egui::Align::LEFT),
+                    |ui| {
+                        industrial_combo(
+                            ui,
+                            "loop-end",
+                            "End",
+                            &params.loop_end_stage,
+                            &[(0, "0"), (1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "5")],
+                            setter,
+                            SAFETY_YELLOW,
+                            scale,
+                        );
+                    },
                 );
             });
         }
@@ -2736,7 +2749,7 @@ fn render_processing_column(
                     20.0,
                     20000.0,
                     setter,
-                    SAFETY_YELLOW,
+                    DANGER_RED,
                     scale,
                     true,
                 );
