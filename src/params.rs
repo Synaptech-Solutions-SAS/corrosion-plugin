@@ -96,6 +96,11 @@ pub struct CorrosionParams {
     #[id = "object"]
     pub object: IntParam,
 
+    /// Quality mode (0=Eco, 1=Normal, 2=High, 3=Render)
+    /// Controls CPU/quality tradeoff for post-processing and oversampling.
+    #[id = "quality_mode"]
+    pub quality_mode: IntParam,
+
     /// Object size scale (0.05 to 10.0)
     /// Affects pitch (inverse) and decay time (direct)
     /// Higher values = larger object = lower pitch, longer decay
@@ -859,6 +864,51 @@ pub fn exciter_model_items() -> &'static [(i32, &'static str)] {
     ]
 }
 
+/// Quality mode enumeration for CPU/quality tradeoff.
+///
+/// - **Eco**: Reduced oversampling, simplified space processing
+/// - **Normal**: Balanced quality (default, matches pre-quality-mode behavior)
+/// - **High**: Full quality with richer spatial processing
+/// - **Render**: Maximum quality, may be too expensive for live use
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum QualityMode {
+    Eco,
+    Normal,
+    High,
+    Render,
+}
+
+impl QualityMode {
+    pub fn from_int(v: i32) -> Self {
+        match v {
+            0 => QualityMode::Eco,
+            1 => QualityMode::Normal,
+            2 => QualityMode::High,
+            3 => QualityMode::Render,
+            _ => QualityMode::Normal,
+        }
+    }
+
+    pub fn to_int(self) -> i32 {
+        match self {
+            QualityMode::Eco => 0,
+            QualityMode::Normal => 1,
+            QualityMode::High => 2,
+            QualityMode::Render => 3,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            QualityMode::Eco => "Eco",
+            QualityMode::Normal => "Normal",
+            QualityMode::High => "High",
+            QualityMode::Render => "Render",
+        }
+    }
+}
+
 /// Resonator object type enumeration.
 ///
 /// Each object has distinct modal characteristics based on physical geometry:
@@ -983,6 +1033,25 @@ pub fn object_param(default: i32) -> IntParam {
         }))
 }
 
+pub fn quality_mode_param(default: i32) -> IntParam {
+    IntParam::new("Quality Mode", default, IntRange::Linear { min: 0, max: 3 })
+        .with_value_to_string(Arc::new(|value| {
+            QualityMode::from_int(value).name().to_string()
+        }))
+        .with_string_to_value(Arc::new(|string| {
+            let normalized = string.trim();
+            [
+                QualityMode::Eco,
+                QualityMode::Normal,
+                QualityMode::High,
+                QualityMode::Render,
+            ]
+            .into_iter()
+            .find(|mode| mode.name().eq_ignore_ascii_case(normalized))
+            .map(QualityMode::to_int)
+        }))
+}
+
 /// Create a float parameter with deterministic string roundtrips.
 ///
 /// CLAP hosts and validators are allowed to convert normalized values to text,
@@ -1008,6 +1077,7 @@ impl Default for CorrosionParams {
             // Sound generation defaults
             exciter: exciter_param(ExciterType::HandStrike.to_int()),
             object: object_param(0), // Pipe
+            quality_mode: quality_mode_param(QualityMode::Normal.to_int()),
 
             // Object transformation defaults
             size: FloatParam::new(

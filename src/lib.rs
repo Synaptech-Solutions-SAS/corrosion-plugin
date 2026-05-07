@@ -585,6 +585,15 @@ impl Plugin for Corrosion {
                 _ => dsp::SpaceMode::Off,
             };
             self.post_chain.set_space_mode(space_mode);
+
+            let post_quality = match self.params.quality_mode.value() {
+                0 => dsp::PostQualityMode::Eco,
+                1 => dsp::PostQualityMode::Normal,
+                2 => dsp::PostQualityMode::High,
+                3 => dsp::PostQualityMode::Render,
+                _ => dsp::PostQualityMode::Normal,
+            };
+            self.post_chain.set_quality_mode(post_quality);
             self.post_chain
                 .set_space_amount(self.params.space_amount.value());
             self.post_chain.set_factory_params(
@@ -617,14 +626,12 @@ impl Plugin for Corrosion {
             right = apply_output_limiter(right * output_gain);
 
             // Write output to buffer channels
-            let mut idx = 0;
-            for channel_sample in channel_samples.into_iter() {
+            for (idx, channel_sample) in channel_samples.into_iter().enumerate() {
                 if idx == 0 {
                     *channel_sample = left;
                 } else if idx == 1 {
                     *channel_sample = right;
                 }
-                idx += 1;
             }
         }
 

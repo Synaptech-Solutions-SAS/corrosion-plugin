@@ -51,7 +51,7 @@ impl PneumaticJet {
         }
         let v_rel = self.air_pressure - res_vel;
         self.rng_phase += 1.618;
-        let noise = (self.rng_phase.sin() * 43758.5453).fract() * 2.0 - 1.0;
+        let noise = (self.rng_phase.sin() * 43_758.547).fract() * 2.0 - 1.0;
         // Non-linear jet saturation keeps the air burst from exploding in level.
         let saturated = v_rel * v_rel - self.turbulence_chaos * v_rel * v_rel * v_rel;
         let raw = noise * saturated.max(0.0);
@@ -320,7 +320,7 @@ impl ParticleRain {
 
     fn pseudo_random(&mut self) -> f32 {
         self.rng_phase += 1.618;
-        ((self.rng_phase.sin() * 43758.5453).fract()).abs()
+        ((self.rng_phase.sin() * 43_758.547).fract()).abs()
     }
 }
 

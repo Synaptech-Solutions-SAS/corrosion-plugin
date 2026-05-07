@@ -70,14 +70,13 @@ fn velocity_affects_brightness_monotonically() {
     }
 
     let mut increasing_count = 0;
-    let mut total_comparisons = 0;
+    let total_comparisons = brightness_values.len() * (brightness_values.len() - 1) / 2;
 
-    for i in 0..brightness_values.len() - 1 {
-        for j in (i + 1)..brightness_values.len() {
-            if brightness_values[j] > brightness_values[i] {
+    for (i, &brightness) in brightness_values.iter().enumerate() {
+        for &later_brightness in brightness_values.iter().skip(i + 1) {
+            if later_brightness > brightness {
                 increasing_count += 1;
             }
-            total_comparisons += 1;
         }
     }
 

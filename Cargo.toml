@@ -26,3 +26,8 @@ gui = ["nih_plug_egui"]
 
 [dev-dependencies]
 assert_no_alloc = { git = "https://github.com/robbert-vdh/rust-assert-no-alloc.git", branch = "feature/nested-permit-forbid" }
+criterion = "0.5"
+
+[[bench]]
+name = "performance"
+harness = false

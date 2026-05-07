@@ -129,7 +129,11 @@ impl ModalModeSpec {
             mode_index as f32 / (mode_count - 1) as f32
         };
         let low_mode_weight = 1.0 - mode_position;
-        let detune_direction = if mode_index % 2 == 0 { -1.0 } else { 1.0 };
+        let detune_direction = if mode_index.is_multiple_of(2) {
+            -1.0
+        } else {
+            1.0
+        };
         let primary_detune = damage * (0.004 + 0.018 * mode_position);
         let companion_detune = damage * (0.010 + 0.030 * mode_position);
         let primary_decay_tilt = 1.0 - damage * (0.10 + 0.18 * low_mode_weight);
@@ -403,7 +407,7 @@ mod tests {
         let mode = ModalModeSpec::new(440.0, 1.0, 0.01);
         let damaged = mode.damaged(crate::dsp::DamageAmount::new(0.5), 1, 3);
         assert!(
-            damaged.len() >= 1,
+            !damaged.is_empty(),
             "damaged() should return at least the primary mode"
         );
         for m in &damaged {

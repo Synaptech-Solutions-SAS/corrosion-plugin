@@ -97,6 +97,8 @@ pub struct ModalResonator {
 impl ModalResonator {
     const REFERENCE_PITCH_HZ: f32 = 220.0;
 
+    // Internal constructor intentionally mirrors all modal control transforms.
+    #[allow(clippy::too_many_arguments)]
     fn from_profile(
         profile: crate::dsp::ModalProfile,
         size_scale: crate::dsp::SizeScale,
@@ -234,6 +236,8 @@ impl ModalResonator {
     }
 
     /// Create a resonator with the full control surface and pitch target.
+    // Public full-control constructor preserves the existing voice call shape.
+    #[allow(clippy::too_many_arguments)]
     pub fn with_profile_controls_and_note(
         profile_id: crate::dsp::ModalProfileId,
         size_scale: crate::dsp::SizeScale,
@@ -412,7 +416,7 @@ impl ResonatorCore for ModalResonator {
             let sample = mode.process(blended_force, sample_rate);
             let mode_position = index as f32 / mode_count.max(1) as f32;
             let pan_spread = width * mode_position;
-            let pan_direction = if index % 2 == 0 { 1.0 } else { -1.0 };
+            let pan_direction = if index.is_multiple_of(2) { 1.0 } else { -1.0 };
             let pan = (pan_spread * pan_direction).clamp(-1.0, 1.0);
             let left_gain = 0.5 * (1.0 - pan);
             let right_gain = 0.5 * (1.0 + pan);

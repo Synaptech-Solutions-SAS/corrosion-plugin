@@ -360,6 +360,7 @@ enum AdsrPhase {
 /// every exciter implementation used by the instrument.
 pub struct Voice {
     active: bool,
+    rendering: bool,
     note: u8,
     velocity: f32,
     exciter_type: i32,
@@ -423,6 +424,7 @@ impl Voice {
     pub fn new() -> Self {
         Self {
             active: false,
+            rendering: false,
             note: 60,
             velocity: 0.0,
             exciter_type: 0,
@@ -651,6 +653,8 @@ impl Voice {
     /// # Returns
     ///
     /// This method mutates the voice in place and returns nothing.
+    // Kept as positional API to avoid widening the voice/manager call graph for a Clippy-only cleanup.
+    #[allow(clippy::too_many_arguments)]
     pub fn note_on(
         &mut self,
         note: u8,
@@ -695,6 +699,8 @@ impl Voice {
     /// # Returns
     ///
     /// This method mutates the voice in place and returns nothing.
+    // Mirrors the host parameter snapshot shape; grouping would be a broader API refactor.
+    #[allow(clippy::too_many_arguments)]
     pub fn note_on_with_controls(
         &mut self,
         note: u8,
@@ -708,6 +714,7 @@ impl Voice {
         controls: VoiceControls,
     ) {
         self.active = true;
+        self.rendering = true;
         self.note = note;
         self.velocity = velocity;
         let exciter_type = ExciterType::from_int(exciter_type).to_int();
@@ -927,6 +934,10 @@ impl Voice {
         self.active
     }
 
+    pub fn is_rendering(&self) -> bool {
+        self.rendering
+    }
+
     /// Return the MIDI note currently assigned to the voice.
     ///
     /// # Returns
@@ -964,12 +975,12 @@ impl Voice {
             return 0.0;
         }
 
-        self.rattle_phase += 1.61803398875;
+        self.rattle_phase += 1.618_034;
         if self.rattle_phase > 1000.0 {
             self.rattle_phase -= 1000.0;
         }
 
-        let noise = (self.rattle_phase.sin() * 43758.5453).fract() * 2.0 - 1.0;
+        let noise = (self.rattle_phase.sin() * 43_758.547).fract() * 2.0 - 1.0;
         let highpass_noise = noise * 0.5;
         let rattle_amount = self.damage_amount.min(1.0) * (signal_level - threshold) * 0.08;
         highpass_noise * rattle_amount
@@ -1028,6 +1039,10 @@ impl Voice {
     ///
     /// The rendered mono sample.
     pub fn process_sample(&mut self, sample_rate: u32) -> f32 {
+        if !self.rendering {
+            return 0.0;
+        }
+
         self.sample_rate = sample_rate as f32;
         let velocity_norm = self.velocity / 127.0;
 
@@ -1036,9 +1051,7 @@ impl Voice {
 
         // Guard the audio output against NaNs or infinities before it
         // leaves the voice boundary.
-        let sample = if !sample.is_finite() {
-            0.0
-        } else if sample.abs() < 1e-30 {
+        let sample = if !sample.is_finite() || sample.abs() < 1e-30 {
             0.0
         } else {
             sample
@@ -1058,17 +1071,16 @@ impl Voice {
 
         // Track decaying peak energy so the manager can steal the quietest
         // voice and so inactive tails eventually self-disable.
-        if self.active {
-            self.peak_hold = self.peak_hold.max(clamped.abs());
-            self.peak_hold *= PEAK_DECAY;
-            if self.peak_hold < TAIL_ENERGY_THRESHOLD {
-                self.frames_below_threshold += 1;
-                if self.frames_below_threshold >= TAIL_DEACTIVATE_FRAMES {
-                    self.active = false;
-                }
-            } else {
-                self.frames_below_threshold = 0;
+        self.peak_hold = self.peak_hold.max(clamped.abs());
+        self.peak_hold *= PEAK_DECAY;
+        if !self.active && self.peak_hold < TAIL_ENERGY_THRESHOLD {
+            self.frames_below_threshold += 1;
+            if self.frames_below_threshold >= TAIL_DEACTIVATE_FRAMES {
+                self.active = false;
+                self.rendering = false;
             }
+        } else {
+            self.frames_below_threshold = 0;
         }
 
         flushed
@@ -1092,6 +1104,10 @@ impl Voice {
     ///
     /// The rendered `(left, right)` sample pair.
     pub fn process_sample_stereo(&mut self, sample_rate: u32, width: f32) -> (f32, f32) {
+        if !self.rendering {
+            return (0.0, 0.0);
+        }
+
         self.sample_rate = sample_rate as f32;
         let velocity_norm = self.velocity / 127.0;
 
@@ -1102,16 +1118,12 @@ impl Voice {
 
         // Guard the stereo output against NaNs or infinities before it
         // leaves the voice boundary.
-        let left = if !left.is_finite() {
-            0.0
-        } else if left.abs() < 1e-30 {
+        let left = if !left.is_finite() || left.abs() < 1e-30 {
             0.0
         } else {
             left
         };
-        let right = if !right.is_finite() {
-            0.0
-        } else if right.abs() < 1e-30 {
+        let right = if !right.is_finite() || right.abs() < 1e-30 {
             0.0
         } else {
             right
@@ -1136,18 +1148,17 @@ impl Voice {
 
         // Track decaying peak energy so the manager can steal the quietest
         // voice and so inactive tails eventually self-disable.
-        if self.active {
-            let peak = clamped_left.abs().max(clamped_right.abs());
-            self.peak_hold = self.peak_hold.max(peak);
-            self.peak_hold *= PEAK_DECAY;
-            if self.peak_hold < TAIL_ENERGY_THRESHOLD {
-                self.frames_below_threshold += 1;
-                if self.frames_below_threshold >= TAIL_DEACTIVATE_FRAMES {
-                    self.active = false;
-                }
-            } else {
-                self.frames_below_threshold = 0;
+        let peak = clamped_left.abs().max(clamped_right.abs());
+        self.peak_hold = self.peak_hold.max(peak);
+        self.peak_hold *= PEAK_DECAY;
+        if !self.active && self.peak_hold < TAIL_ENERGY_THRESHOLD {
+            self.frames_below_threshold += 1;
+            if self.frames_below_threshold >= TAIL_DEACTIVATE_FRAMES {
+                self.active = false;
+                self.rendering = false;
             }
+        } else {
+            self.frames_below_threshold = 0;
         }
 
         (flushed_left, flushed_right)
@@ -1248,7 +1259,7 @@ mod tests {
         for _ in 0..48_000 {
             let sample = voice.process_sample(sample_rate);
             assert!(
-                sample >= -1.0 && sample <= 1.0,
+                (-1.0..=1.0).contains(&sample),
                 "output sample {sample} outside [-1, 1]"
             );
         }

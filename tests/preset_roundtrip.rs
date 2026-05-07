@@ -25,6 +25,7 @@ fn preset_roundtrip_save_and_load() {
         output: 1.0,
         width: 0.5,
         body: 0.2,
+        quality_mode: 1,
         extra: PresetParameters::default(),
     };
 
@@ -72,6 +73,7 @@ fn expanded_parameters_roundtrip() {
         output: 3.0,
         width: 2.0,
         body: 4.0,
+        quality_mode: 3,
         extra: PresetParameters::default(),
     };
     preset.extra.drive_amount = 3.2;
@@ -100,5 +102,87 @@ fn expanded_parameters_roundtrip() {
     assert_eq!(params.pipe_ring_decay.value(), 0.991);
     assert_eq!(params.ridge_spacing.value(), 0.08);
     assert_eq!(params.flow_rate.value(), 2.2);
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn invalid_preset_values_are_sanitized_on_load() {
+    let json = r#"
+    {
+        "name": "Broken State",
+        "version": "999",
+        "object": "Pipe",
+        "exciter": 999,
+        "size": -100.0,
+        "rust": 999.0,
+        "damage": -5.0,
+        "drive": 999.0,
+        "output": 999.0,
+        "width": -999.0,
+        "body": 999.0,
+        "extra": {
+            "ui_scale": 99,
+            "loop_mode": 99,
+            "loop_start_stage": -99,
+            "loop_end_stage": 99,
+            "space_mode": 99,
+            "filter_cutoff": -10.0,
+            "analog_ceiling": 9.0,
+            "diode_softness": -3.0
+        }
+    }
+    "#;
+
+    let path = unique_temp_path("sanitized_load");
+    fs::write(&path, json).unwrap();
+    let loaded = Preset::load(&path).unwrap();
+    let params = loaded.into_params();
+
+    assert_eq!(params.exciter.value(), 2);
+    assert_eq!(params.size.value(), 0.05);
+    assert_eq!(params.rust.value(), 5.0);
+    assert_eq!(params.damage.value(), 0.0);
+    assert_eq!(params.drive.value(), 5.0);
+    assert_eq!(params.output.value(), 100.0);
+    assert_eq!(params.width.value(), -2.0);
+    assert_eq!(params.body.value(), 5.0);
+    assert_eq!(params.ui_scale.value(), 4);
+    assert_eq!(params.loop_mode.value(), 2);
+    assert_eq!(params.loop_start_stage.value(), 0);
+    assert_eq!(params.loop_end_stage.value(), 5);
+    assert_eq!(params.space_mode.value(), 3);
+    assert_eq!(params.filter_cutoff.value(), 20.0);
+    assert_eq!(params.analog_ceiling.value(), 1.0);
+    assert_eq!(params.diode_softness.value(), 0.0);
+    assert_eq!(params.quality_mode.value(), 1);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn quality_mode_preset_roundtrip() {
+    let preset = Preset {
+        name: "Quality Test".to_string(),
+        version: PRESET_VERSION.to_string(),
+        object: Object::Plate,
+        exciter: 5,
+        size: 1.5,
+        rust: 0.5,
+        damage: 0.5,
+        drive: 0.5,
+        output: 1.0,
+        width: 0.0,
+        body: 0.0,
+        quality_mode: 0,
+        extra: PresetParameters::default(),
+    };
+
+    let path = unique_temp_path("quality_roundtrip");
+    preset.save(&path).unwrap();
+    let loaded = Preset::load(&path).unwrap();
+    assert_eq!(preset.quality_mode, loaded.quality_mode);
+
+    let params = loaded.into_params();
+    assert_eq!(params.quality_mode.value(), 0);
     let _ = fs::remove_file(path);
 }

@@ -133,7 +133,7 @@ impl SafetyConstraints {
             return false;
         }
 
-        if params.size < 0.1 || params.size > 3.0 {
+        if !(0.1..=3.0).contains(&params.size) {
             return false;
         }
 

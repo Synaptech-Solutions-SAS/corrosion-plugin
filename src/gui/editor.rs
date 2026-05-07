@@ -51,6 +51,12 @@ struct FactoryPresetEntry {
     path: PathBuf,
 }
 
+#[derive(Clone, Copy)]
+struct KnobDragState {
+    start_value: f32,
+    start_pointer_y: f32,
+}
+
 // ---------------------------------------------------------------------------
 // Control identifiers and specs (unchanged from original)
 // ---------------------------------------------------------------------------
@@ -159,144 +165,589 @@ struct ResonatorPanelSpec {
 // ---------------------------------------------------------------------------
 
 const HAND_STRIKE_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::HandMass, label: "Hand Mass", min: 0.4, max: 3.0 },
-    ExciterControlSpec { id: ExciterControlId::FleshStiffness, label: "Flesh Stiffness", min: 0.05, max: 0.8 },
-    ExciterControlSpec { id: ExciterControlId::FleshDamping, label: "Flesh Damping", min: 0.3, max: 1.8 },
-    ExciterControlSpec { id: ExciterControlId::MuteDecay, label: "Mute Decay", min: 0.85, max: 0.999 },
+    ExciterControlSpec {
+        id: ExciterControlId::HandMass,
+        label: "Hand Mass",
+        min: 0.4,
+        max: 3.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::FleshStiffness,
+        label: "Flesh Stiffness",
+        min: 0.05,
+        max: 0.8,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::FleshDamping,
+        label: "Flesh Damping",
+        min: 0.3,
+        max: 1.8,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::MuteDecay,
+        label: "Mute Decay",
+        min: 0.85,
+        max: 0.999,
+    },
 ];
 const FELT_MALLET_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::MalletMass, label: "Mallet Mass", min: 0.4, max: 3.5 },
-    ExciterControlSpec { id: ExciterControlId::FeltSoftness, label: "Felt Softness", min: 0.1, max: 1.3 },
-    ExciterControlSpec { id: ExciterControlId::CoreHardness, label: "Core Hardness", min: 0.5, max: 4.5 },
-    ExciterControlSpec { id: ExciterControlId::CompressionCurve, label: "Compression Curve", min: 2.0, max: 5.0 },
+    ExciterControlSpec {
+        id: ExciterControlId::MalletMass,
+        label: "Mallet Mass",
+        min: 0.4,
+        max: 3.5,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::FeltSoftness,
+        label: "Felt Softness",
+        min: 0.1,
+        max: 1.3,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::CoreHardness,
+        label: "Core Hardness",
+        min: 0.5,
+        max: 4.5,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::CompressionCurve,
+        label: "Compression Curve",
+        min: 2.0,
+        max: 5.0,
+    },
 ];
 const HARD_MALLET_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::MalletMass, label: "Mallet Mass", min: 0.4, max: 3.5 },
-    ExciterControlSpec { id: ExciterControlId::MaterialStiffness, label: "Material Stiffness", min: 0.5, max: 5.0 },
-    ExciterControlSpec { id: ExciterControlId::ImpactDamping, label: "Impact Damping", min: 0.1, max: 1.3 },
+    ExciterControlSpec {
+        id: ExciterControlId::MalletMass,
+        label: "Mallet Mass",
+        min: 0.4,
+        max: 3.5,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::MaterialStiffness,
+        label: "Material Stiffness",
+        min: 0.5,
+        max: 5.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::ImpactDamping,
+        label: "Impact Damping",
+        min: 0.1,
+        max: 1.3,
+    },
 ];
 const DRUMSTICK_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::StickMass, label: "Stick Mass", min: 0.05, max: 1.25 },
-    ExciterControlSpec { id: ExciterControlId::TipStiffness, label: "Tip Stiffness", min: 0.8, max: 6.8 },
-    ExciterControlSpec { id: ExciterControlId::RestitutionBounciness, label: "Restitution Bounciness", min: 0.2, max: 0.9 },
-    ExciterControlSpec { id: ExciterControlId::MicroBounceLimit, label: "Micro Bounce Limit", min: 2.0, max: 8.0 },
+    ExciterControlSpec {
+        id: ExciterControlId::StickMass,
+        label: "Stick Mass",
+        min: 0.05,
+        max: 1.25,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::TipStiffness,
+        label: "Tip Stiffness",
+        min: 0.8,
+        max: 6.8,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::RestitutionBounciness,
+        label: "Restitution Bounciness",
+        min: 0.2,
+        max: 0.9,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::MicroBounceLimit,
+        label: "Micro Bounce Limit",
+        min: 2.0,
+        max: 8.0,
+    },
 ];
 const WIRE_BRUSH_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::WireDensity, label: "Wire Density", min: 10.0, max: 130.0 },
-    ExciterControlSpec { id: ExciterControlId::SpreadDuration, label: "Spread Duration", min: 10.0, max: 250.0 },
-    ExciterControlSpec { id: ExciterControlId::BrushWireStiffness, label: "Wire Stiffness", min: 0.0, max: 1.0 },
-    ExciterControlSpec { id: ExciterControlId::AmplitudeRandomization, label: "Amplitude Randomization", min: 0.0, max: 1.0 },
+    ExciterControlSpec {
+        id: ExciterControlId::WireDensity,
+        label: "Wire Density",
+        min: 10.0,
+        max: 130.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::SpreadDuration,
+        label: "Spread Duration",
+        min: 10.0,
+        max: 250.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::BrushWireStiffness,
+        label: "Wire Stiffness",
+        min: 0.0,
+        max: 1.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::AmplitudeRandomization,
+        label: "Amplitude Randomization",
+        min: 0.0,
+        max: 1.0,
+    },
 ];
 const METAL_PIPE_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::PipeMass, label: "Pipe Mass", min: 0.4, max: 2.6 },
-    ExciterControlSpec { id: ExciterControlId::MetalStiffness, label: "Metal Stiffness", min: 0.5, max: 5.5 },
-    ExciterControlSpec { id: ExciterControlId::PipePitch, label: "Pipe Pitch", min: 0.5, max: 2.5 },
-    ExciterControlSpec { id: ExciterControlId::PipeRingDecay, label: "Pipe Ring Decay", min: 0.96, max: 0.999 },
+    ExciterControlSpec {
+        id: ExciterControlId::PipeMass,
+        label: "Pipe Mass",
+        min: 0.4,
+        max: 2.6,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::MetalStiffness,
+        label: "Metal Stiffness",
+        min: 0.5,
+        max: 5.5,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::PipePitch,
+        label: "Pipe Pitch",
+        min: 0.5,
+        max: 2.5,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::PipeRingDecay,
+        label: "Pipe Ring Decay",
+        min: 0.96,
+        max: 0.999,
+    },
 ];
 const METAL_CHAIN_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::LinkCount, label: "Link Count", min: 3.0, max: 15.0 },
-    ExciterControlSpec { id: ExciterControlId::ChainMass, label: "Chain Mass", min: 0.2, max: 1.4 },
-    ExciterControlSpec { id: ExciterControlId::DropEnvelopeSpread, label: "Drop Envelope Spread", min: 40.0, max: 400.0 },
-    ExciterControlSpec { id: ExciterControlId::InternalRattle, label: "Internal Rattle", min: 0.0, max: 1.0 },
-    ExciterControlSpec { id: ExciterControlId::RattleColor, label: "Rattle Color", min: 0.0, max: 1.0 },
+    ExciterControlSpec {
+        id: ExciterControlId::LinkCount,
+        label: "Link Count",
+        min: 3.0,
+        max: 15.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::ChainMass,
+        label: "Chain Mass",
+        min: 0.2,
+        max: 1.4,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::DropEnvelopeSpread,
+        label: "Drop Envelope Spread",
+        min: 40.0,
+        max: 400.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::InternalRattle,
+        label: "Internal Rattle",
+        min: 0.0,
+        max: 1.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::RattleColor,
+        label: "Rattle Color",
+        min: 0.0,
+        max: 1.0,
+    },
 ];
 const BOW_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::BowPressure, label: "Bow Pressure", min: 0.2, max: 2.0 },
-    ExciterControlSpec { id: ExciterControlId::BowSpeed, label: "Bow Speed", min: 0.1, max: 2.0 },
-    ExciterControlSpec { id: ExciterControlId::RosinGrip, label: "Rosin Grip", min: 0.05, max: 1.5 },
-    ExciterControlSpec { id: ExciterControlId::SlipCurve, label: "Slip Curve", min: 0.05, max: 1.5 },
+    ExciterControlSpec {
+        id: ExciterControlId::BowPressure,
+        label: "Bow Pressure",
+        min: 0.2,
+        max: 2.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::BowSpeed,
+        label: "Bow Speed",
+        min: 0.1,
+        max: 2.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::RosinGrip,
+        label: "Rosin Grip",
+        min: 0.05,
+        max: 1.5,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::SlipCurve,
+        label: "Slip Curve",
+        min: 0.05,
+        max: 1.5,
+    },
 ];
 const STIFF_POINT_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::ScrapeSpeed, label: "Scrape Speed", min: 0.1, max: 2.5 },
-    ExciterControlSpec { id: ExciterControlId::PointPressure, label: "Point Pressure", min: 0.1, max: 1.5 },
-    ExciterControlSpec { id: ExciterControlId::ChatterPitch, label: "Chatter Pitch", min: 0.1, max: 1.5 },
-    ExciterControlSpec { id: ExciterControlId::ChatterDamping, label: "Chatter Damping", min: 0.1, max: 0.9 },
+    ExciterControlSpec {
+        id: ExciterControlId::ScrapeSpeed,
+        label: "Scrape Speed",
+        min: 0.1,
+        max: 2.5,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::PointPressure,
+        label: "Point Pressure",
+        min: 0.1,
+        max: 1.5,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::ChatterPitch,
+        label: "Chatter Pitch",
+        min: 0.1,
+        max: 1.5,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::ChatterDamping,
+        label: "Chatter Damping",
+        min: 0.1,
+        max: 0.9,
+    },
 ];
 const HEAVY_GRINDING_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::GrindSpeed, label: "Grind Speed", min: 0.1, max: 2.5 },
-    ExciterControlSpec { id: ExciterControlId::GrindPressure, label: "Grind Pressure", min: 0.1, max: 1.9 },
-    ExciterControlSpec { id: ExciterControlId::SurfaceGrit, label: "Surface Grit", min: 0.0, max: 1.0 },
-    ExciterControlSpec { id: ExciterControlId::GritColor, label: "Grit Color", min: 0.0, max: 1.0 },
+    ExciterControlSpec {
+        id: ExciterControlId::GrindSpeed,
+        label: "Grind Speed",
+        min: 0.1,
+        max: 2.5,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::GrindPressure,
+        label: "Grind Pressure",
+        min: 0.1,
+        max: 1.9,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::SurfaceGrit,
+        label: "Surface Grit",
+        min: 0.0,
+        max: 1.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::GritColor,
+        label: "Grit Color",
+        min: 0.0,
+        max: 1.0,
+    },
 ];
 const CORRUGATED_DRAG_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::DragSpeed, label: "Drag Speed", min: 0.1, max: 2.5 },
-    ExciterControlSpec { id: ExciterControlId::RidgeSpacing, label: "Ridge Spacing", min: 0.01, max: 0.2 },
-    ExciterControlSpec { id: ExciterControlId::RidgeDepth, label: "Ridge Depth", min: 0.0, max: 2.0 },
-    ExciterControlSpec { id: ExciterControlId::DragExciterMass, label: "Exciter Mass", min: 0.2, max: 2.0 },
+    ExciterControlSpec {
+        id: ExciterControlId::DragSpeed,
+        label: "Drag Speed",
+        min: 0.1,
+        max: 2.5,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::RidgeSpacing,
+        label: "Ridge Spacing",
+        min: 0.01,
+        max: 0.2,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::RidgeDepth,
+        label: "Ridge Depth",
+        min: 0.0,
+        max: 2.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::DragExciterMass,
+        label: "Exciter Mass",
+        min: 0.2,
+        max: 2.0,
+    },
 ];
 const TENSION_RISE_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::PullSpeed, label: "Pull Speed", min: 0.05, max: 1.55 },
-    ExciterControlSpec { id: ExciterControlId::BreakThreshold, label: "Break Threshold", min: 0.1, max: 1.6 },
-    ExciterControlSpec { id: ExciterControlId::SlipStochasticity, label: "Slip Stochasticity", min: 0.0, max: 1.0 },
-    ExciterControlSpec { id: ExciterControlId::CreakSharpness, label: "Creak Sharpness", min: 0.2, max: 1.4 },
+    ExciterControlSpec {
+        id: ExciterControlId::PullSpeed,
+        label: "Pull Speed",
+        min: 0.05,
+        max: 1.55,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::BreakThreshold,
+        label: "Break Threshold",
+        min: 0.1,
+        max: 1.6,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::SlipStochasticity,
+        label: "Slip Stochasticity",
+        min: 0.0,
+        max: 1.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::CreakSharpness,
+        label: "Creak Sharpness",
+        min: 0.2,
+        max: 1.4,
+    },
 ];
 const PNEUMATIC_JET_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::AirPressure, label: "Air Pressure", min: 0.1, max: 2.1 },
-    ExciterControlSpec { id: ExciterControlId::NozzleWidth, label: "Nozzle Width", min: 0.1, max: 1.6 },
-    ExciterControlSpec { id: ExciterControlId::TurbulenceChaos, label: "Turbulence Chaos", min: 0.0, max: 2.0 },
+    ExciterControlSpec {
+        id: ExciterControlId::AirPressure,
+        label: "Air Pressure",
+        min: 0.1,
+        max: 2.1,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::NozzleWidth,
+        label: "Nozzle Width",
+        min: 0.1,
+        max: 1.6,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::TurbulenceChaos,
+        label: "Turbulence Chaos",
+        min: 0.0,
+        max: 2.0,
+    },
 ];
 const ELECTROMAGNETIC_HUM_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::MainsFrequency, label: "Mains Frequency", min: 40.0, max: 120.0 },
-    ExciterControlSpec { id: ExciterControlId::CoilProximity, label: "Coil Proximity", min: 0.0, max: 2.0 },
-    ExciterControlSpec { id: ExciterControlId::VoltageSag, label: "Voltage Sag", min: 0.0, max: 2.0 },
+    ExciterControlSpec {
+        id: ExciterControlId::MainsFrequency,
+        label: "Mains Frequency",
+        min: 40.0,
+        max: 120.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::CoilProximity,
+        label: "Coil Proximity",
+        min: 0.0,
+        max: 2.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::VoltageSag,
+        label: "Voltage Sag",
+        min: 0.0,
+        max: 2.0,
+    },
 ];
 const TENSION_SNAP_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::PullDistance, label: "Pull Distance", min: 0.1, max: 1.5 },
-    ExciterControlSpec { id: ExciterControlId::HookStiffness, label: "Hook Stiffness", min: 0.2, max: 2.2 },
-    ExciterControlSpec { id: ExciterControlId::SnapForce, label: "Snap Force", min: 0.1, max: 2.0 },
+    ExciterControlSpec {
+        id: ExciterControlId::PullDistance,
+        label: "Pull Distance",
+        min: 0.1,
+        max: 1.5,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::HookStiffness,
+        label: "Hook Stiffness",
+        min: 0.2,
+        max: 2.2,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::SnapForce,
+        label: "Snap Force",
+        min: 0.1,
+        max: 2.0,
+    },
 ];
 const PARTICLE_RAIN_CONTROLS: &[ExciterControlSpec] = &[
-    ExciterControlSpec { id: ExciterControlId::FlowRate, label: "Flow Rate", min: 0.1, max: 3.1 },
-    ExciterControlSpec { id: ExciterControlId::ParticleMass, label: "Particle Mass", min: 0.05, max: 1.0 },
-    ExciterControlSpec { id: ExciterControlId::MassVariance, label: "Mass Variance", min: 0.0, max: 2.0 },
+    ExciterControlSpec {
+        id: ExciterControlId::FlowRate,
+        label: "Flow Rate",
+        min: 0.1,
+        max: 3.1,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::ParticleMass,
+        label: "Particle Mass",
+        min: 0.05,
+        max: 1.0,
+    },
+    ExciterControlSpec {
+        id: ExciterControlId::MassVariance,
+        label: "Mass Variance",
+        min: 0.0,
+        max: 2.0,
+    },
 ];
 
 const PIPE_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
-    ResonatorControlSpec { id: ResonatorControlId::Size, label: "Pipe Length", min: 0.05, max: 10.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Brightness, label: "Tube Diameter", min: 0.0, max: 1.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Damping, label: "Sustain Time", min: 0.0, max: 1.0 },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Size,
+        label: "Pipe Length",
+        min: 0.05,
+        max: 10.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Brightness,
+        label: "Tube Diameter",
+        min: 0.0,
+        max: 1.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Damping,
+        label: "Sustain Time",
+        min: 0.0,
+        max: 1.0,
+    },
 ];
 const PLATE_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
-    ResonatorControlSpec { id: ResonatorControlId::Size, label: "Plate Size", min: 0.05, max: 10.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Damping, label: "Aspect Ratio", min: 0.0, max: 1.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Brightness, label: "Metal Stiffness", min: 0.0, max: 1.0 },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Size,
+        label: "Plate Size",
+        min: 0.05,
+        max: 10.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Damping,
+        label: "Aspect Ratio",
+        min: 0.0,
+        max: 1.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Brightness,
+        label: "Metal Stiffness",
+        min: 0.0,
+        max: 1.0,
+    },
 ];
 const TANK_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
-    ResonatorControlSpec { id: ResonatorControlId::Size, label: "Tank Volume", min: 0.05, max: 10.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Thickness, label: "Wall Thickness", min: 0.0, max: 1.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Brightness, label: "Cavity Mix", min: 0.0, max: 1.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Damping, label: "Shell Decay", min: 0.0, max: 1.0 },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Size,
+        label: "Tank Volume",
+        min: 0.05,
+        max: 10.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Thickness,
+        label: "Wall Thickness",
+        min: 0.0,
+        max: 1.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Brightness,
+        label: "Cavity Mix",
+        min: 0.0,
+        max: 1.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Damping,
+        label: "Shell Decay",
+        min: 0.0,
+        max: 1.0,
+    },
 ];
 const CHAIN_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
-    ResonatorControlSpec { id: ResonatorControlId::Size, label: "Link Mass", min: 0.05, max: 10.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Thickness, label: "Chain Length", min: 0.0, max: 1.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Brightness, label: "Instability", min: 0.0, max: 1.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Damping, label: "Friction Decay", min: 0.0, max: 1.0 },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Size,
+        label: "Link Mass",
+        min: 0.05,
+        max: 10.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Thickness,
+        label: "Chain Length",
+        min: 0.0,
+        max: 1.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Brightness,
+        label: "Instability",
+        min: 0.0,
+        max: 1.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Damping,
+        label: "Friction Decay",
+        min: 0.0,
+        max: 1.0,
+    },
 ];
 const IBEAM_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
-    ResonatorControlSpec { id: ResonatorControlId::Size, label: "Beam Mass", min: 0.05, max: 10.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Brightness, label: "Shear Density", min: 0.0, max: 1.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Damping, label: "Rigidity Damping", min: 0.0, max: 1.0 },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Size,
+        label: "Beam Mass",
+        min: 0.05,
+        max: 10.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Brightness,
+        label: "Shear Density",
+        min: 0.0,
+        max: 1.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Damping,
+        label: "Rigidity Damping",
+        min: 0.0,
+        max: 1.0,
+    },
 ];
 const TAUT_CABLE_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
-    ResonatorControlSpec { id: ResonatorControlId::Size, label: "Cable Tension", min: 0.05, max: 10.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Brightness, label: "Braid Stiffness", min: 0.0, max: 1.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Damping, label: "Tension Drop", min: 0.0, max: 1.0 },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Size,
+        label: "Cable Tension",
+        min: 0.05,
+        max: 10.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Brightness,
+        label: "Braid Stiffness",
+        min: 0.0,
+        max: 1.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Damping,
+        label: "Tension Drop",
+        min: 0.0,
+        max: 1.0,
+    },
 ];
 const COIL_SPRING_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
-    ResonatorControlSpec { id: ResonatorControlId::Size, label: "Coil Length", min: 0.05, max: 10.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Brightness, label: "Dispersion Chirp", min: 0.0, max: 1.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Damping, label: "Spring Slosh", min: 0.0, max: 1.0 },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Size,
+        label: "Coil Length",
+        min: 0.05,
+        max: 10.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Brightness,
+        label: "Dispersion Chirp",
+        min: 0.0,
+        max: 1.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Damping,
+        label: "Spring Slosh",
+        min: 0.0,
+        max: 1.0,
+    },
 ];
 const SHEET_METAL_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
-    ResonatorControlSpec { id: ResonatorControlId::Size, label: "Sheet Size", min: 0.05, max: 10.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Thickness, label: "Metal Thinness", min: 0.0, max: 1.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Damping, label: "Edge Damping", min: 0.0, max: 1.0 },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Size,
+        label: "Sheet Size",
+        min: 0.05,
+        max: 10.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Thickness,
+        label: "Metal Thinness",
+        min: 0.0,
+        max: 1.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Damping,
+        label: "Edge Damping",
+        min: 0.0,
+        max: 1.0,
+    },
 ];
 const INDUSTRIAL_COG_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
-    ResonatorControlSpec { id: ResonatorControlId::Size, label: "Blade Radius", min: 0.05, max: 10.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Brightness, label: "Tooth Dissonance", min: 0.0, max: 1.0 },
-    ResonatorControlSpec { id: ResonatorControlId::Thickness, label: "Blade Thickness", min: 0.0, max: 1.0 },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Size,
+        label: "Blade Radius",
+        min: 0.05,
+        max: 10.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Brightness,
+        label: "Tooth Dissonance",
+        min: 0.0,
+        max: 1.0,
+    },
+    ResonatorControlSpec {
+        id: ResonatorControlId::Thickness,
+        label: "Blade Thickness",
+        min: 0.0,
+        max: 1.0,
+    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -443,16 +894,26 @@ fn sizes_match(current_size: (u32, u32), desired_size: (u32, u32)) -> bool {
 /// Paint a decorative screw head at the given position.
 fn paint_screw(painter: &egui::Painter, center: egui::Pos2, radius: f32) {
     painter.circle_filled(center, radius, egui::Color32::from_rgb(0x33, 0x33, 0x33));
-    painter.circle_stroke(center, radius, egui::Stroke::new(1.0, egui::Color32::from_rgb(0x11, 0x11, 0x11)));
+    painter.circle_stroke(
+        center,
+        radius,
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(0x11, 0x11, 0x11)),
+    );
     // Cross slot
     let slot_len = radius * 0.6;
     let slot_w = 1.0;
     painter.line_segment(
-        [center - egui::vec2(slot_len, 0.0), center + egui::vec2(slot_len, 0.0)],
+        [
+            center - egui::vec2(slot_len, 0.0),
+            center + egui::vec2(slot_len, 0.0),
+        ],
         egui::Stroke::new(slot_w, egui::Color32::from_rgb(0x11, 0x11, 0x11)),
     );
     painter.line_segment(
-        [center - egui::vec2(0.0, slot_len), center + egui::vec2(0.0, slot_len)],
+        [
+            center - egui::vec2(0.0, slot_len),
+            center + egui::vec2(0.0, slot_len),
+        ],
         egui::Stroke::new(slot_w, egui::Color32::from_rgb(0x11, 0x11, 0x11)),
     );
     // Highlight
@@ -468,11 +929,17 @@ fn paint_meter(painter: &egui::Painter, rect: egui::Rect, fill_ratio: f32, scale
     let _ = scale;
     // Background
     painter.rect_filled(rect, 2.0, egui::Color32::from_rgb(0x1A, 0x1A, 0x1A));
-    painter.rect_stroke(rect, 2.0, egui::Stroke::new(2.0, CONCRETE), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        rect,
+        2.0,
+        egui::Stroke::new(2.0, CONCRETE),
+        egui::StrokeKind::Outside,
+    );
 
     // Fill gradient: green -> yellow -> red
     let fill_width = rect.width() * fill_ratio.clamp(0.0, 1.0);
-    let _fill_rect = egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + fill_width, rect.max.y));
+    let _fill_rect =
+        egui::Rect::from_min_max(rect.min, egui::pos2(rect.min.x + fill_width, rect.max.y));
     if fill_width > 0.0 {
         let green_end = rect.width() * 0.5;
         let yellow_end = rect.width() * 0.75;
@@ -480,7 +947,10 @@ fn paint_meter(painter: &egui::Painter, rect: egui::Rect, fill_ratio: f32, scale
         // Green section
         let green_rect = egui::Rect::from_min_max(
             egui::pos2(x_start, rect.min.y),
-            egui::pos2((x_start + green_end).min(rect.min.x + fill_width), rect.max.y),
+            egui::pos2(
+                (x_start + green_end).min(rect.min.x + fill_width),
+                rect.max.y,
+            ),
         );
         if green_rect.width() > 0.0 {
             painter.rect_filled(green_rect, 0.0, METER_GREEN.linear_multiply(0.8));
@@ -488,7 +958,10 @@ fn paint_meter(painter: &egui::Painter, rect: egui::Rect, fill_ratio: f32, scale
         // Yellow section
         let yellow_rect = egui::Rect::from_min_max(
             egui::pos2((x_start + green_end).max(rect.min.x), rect.min.y),
-            egui::pos2((x_start + yellow_end).min(rect.min.x + fill_width), rect.max.y),
+            egui::pos2(
+                (x_start + yellow_end).min(rect.min.x + fill_width),
+                rect.max.y,
+            ),
         );
         if yellow_rect.width() > 0.0 {
             painter.rect_filled(yellow_rect, 0.0, SAFETY_YELLOW.linear_multiply(0.8));
@@ -527,51 +1000,89 @@ fn industrial_knob(
     let knob_height = radius * 2.0;
     let label_height = 14.0 * scale;
     let value_height = 14.0 * scale;
-    let desired_size = egui::vec2(radius * 2.0 + 8.0 * scale, knob_height + label_height + value_height);
+    let desired_size = egui::vec2(
+        radius * 2.0 + 8.0 * scale,
+        knob_height + label_height + value_height,
+    );
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click_and_drag());
     let drag_start_id = response.id;
 
-    let value = param.value();
-    let normalized = if (max - min).abs() > f32::EPSILON {
-        ((value - min) / (max - min)).clamp(0.0, 1.0)
-    } else {
-        0.5
-    };
+    let mut display_value = param.value();
 
     // Drag interaction
     if response.drag_started() {
-        ui.ctx().data_mut(|data| data.insert_temp(drag_start_id, value));
+        let drag_state = KnobDragState {
+            start_value: display_value,
+            start_pointer_y: response
+                .interact_pointer_pos()
+                .map(|pointer| pointer.y)
+                .unwrap_or(rect.center().y),
+        };
+        ui.ctx()
+            .data_mut(|data| data.insert_temp(drag_start_id, drag_state));
         setter.begin_set_parameter(param);
     }
     if response.dragged() {
-        let drag_start_value = ui
+        let drag_state = ui
             .ctx()
-            .data(|data| data.get_temp::<f32>(drag_start_id))
-            .unwrap_or(value);
-        let new_value = knob_drag_value(drag_start_value, response.drag_delta().y, min, max, scale);
-        if (new_value - value).abs() > f32::EPSILON {
-            setter.set_parameter(param, new_value);
+            .data(|data| data.get_temp::<KnobDragState>(drag_start_id));
+
+        if let (Some(drag_state), Some(pointer)) = (drag_state, response.interact_pointer_pos()) {
+            let new_value = knob_drag_value(
+                drag_state.start_value,
+                pointer.y - drag_state.start_pointer_y,
+                min,
+                max,
+                scale,
+            );
+            display_value = new_value;
+            if (new_value - param.value()).abs() > f32::EPSILON {
+                setter.set_parameter(param, new_value);
+            }
         }
     }
     if response.drag_stopped() {
-        ui.ctx().data_mut(|data| data.remove::<f32>(drag_start_id));
+        ui.ctx()
+            .data_mut(|data| data.remove::<KnobDragState>(drag_start_id));
         setter.end_set_parameter(param);
     }
+
+    let normalized = if (max - min).abs() > f32::EPSILON {
+        ((display_value - min) / (max - min)).clamp(0.0, 1.0)
+    } else {
+        0.5
+    };
 
     // Paint knob
     let center = egui::pos2(rect.center().x, rect.min.y + radius);
     let painter = ui.painter();
 
     // Outer ring shadow
-    painter.circle_filled(center, radius + 2.0 * scale, egui::Color32::from_black_alpha(100));
+    painter.circle_filled(
+        center,
+        radius + 2.0 * scale,
+        egui::Color32::from_black_alpha(100),
+    );
     // Knob body - conic gradient approximation
     painter.circle_filled(center, radius, egui::Color32::from_rgb(0x33, 0x33, 0x33));
     // Highlight crescent (top-left)
     let highlight_center = center + egui::vec2(-radius * 0.15, -radius * 0.15);
-    painter.circle_filled(highlight_center, radius * 0.85, egui::Color32::from_rgb(0x44, 0x44, 0x44));
-    painter.circle_filled(center, radius - 1.0 * scale, egui::Color32::from_rgb(0x33, 0x33, 0x33));
+    painter.circle_filled(
+        highlight_center,
+        radius * 0.85,
+        egui::Color32::from_rgb(0x44, 0x44, 0x44),
+    );
+    painter.circle_filled(
+        center,
+        radius - 1.0 * scale,
+        egui::Color32::from_rgb(0x33, 0x33, 0x33),
+    );
     // Border
-    painter.circle_stroke(center, radius, egui::Stroke::new(2.0 * scale, egui::Color32::from_rgb(0x22, 0x22, 0x22)));
+    painter.circle_stroke(
+        center,
+        radius,
+        egui::Stroke::new(2.0 * scale, egui::Color32::from_rgb(0x22, 0x22, 0x22)),
+    );
 
     // Marker line: -135° to +135° range
     let angle_deg = -135.0 + normalized * 270.0;
@@ -595,7 +1106,7 @@ fn industrial_knob(
     );
 
     // Value below label
-    let value_text = format_value(value, min, max);
+    let value_text = format_value(display_value, min, max);
     painter.text(
         egui::pos2(center.x, label_y + label_height),
         egui::Align2::CENTER_TOP,
@@ -607,7 +1118,13 @@ fn industrial_knob(
     response
 }
 
-fn knob_drag_value(drag_start_value: f32, drag_delta_y: f32, min: f32, max: f32, scale: f32) -> f32 {
+fn knob_drag_value(
+    drag_start_value: f32,
+    drag_delta_y: f32,
+    min: f32,
+    max: f32,
+    scale: f32,
+) -> f32 {
     let speed = (max - min) / (150.0 * scale.max(f32::EPSILON));
     (drag_start_value - drag_delta_y * speed).clamp(min, max)
 }
@@ -699,7 +1216,12 @@ fn industrial_fader(
         egui::vec2(track_right - track_left, track_height),
     );
     painter.rect_filled(track_rect, 3.0 * scale, FADER_TRACK_BG);
-    painter.rect_stroke(track_rect, 3.0 * scale, egui::Stroke::new(1.0, CONCRETE), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        track_rect,
+        3.0 * scale,
+        egui::Stroke::new(1.0, CONCRETE),
+        egui::StrokeKind::Outside,
+    );
 
     // Thumb
     let thumb_x = track_left + normalized * (track_right - track_left);
@@ -708,10 +1230,18 @@ fn industrial_fader(
         egui::vec2(thumb_width, thumb_height),
     );
     painter.rect_filled(thumb_rect, 2.0 * scale, THUMB_BG);
-    painter.rect_stroke(thumb_rect, 2.0 * scale, egui::Stroke::new(2.0 * scale, THUMB_BORDER), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        thumb_rect,
+        2.0 * scale,
+        egui::Stroke::new(2.0 * scale, THUMB_BORDER),
+        egui::StrokeKind::Outside,
+    );
     // Thumb crosshair
     painter.line_segment(
-        [thumb_rect.center() - egui::vec2(thumb_width * 0.3, 0.0), thumb_rect.center() + egui::vec2(thumb_width * 0.3, 0.0)],
+        [
+            thumb_rect.center() - egui::vec2(thumb_width * 0.3, 0.0),
+            thumb_rect.center() + egui::vec2(thumb_width * 0.3, 0.0),
+        ],
         egui::Stroke::new(1.5 * scale, OFF_WHITE),
     );
 
@@ -807,7 +1337,12 @@ fn industrial_vfader(
         egui::pos2(cx + track_width * 0.5, track_bottom),
     );
     painter.rect_filled(track_rect, 2.0 * scale, CHARCOAL);
-    painter.rect_stroke(track_rect, 2.0 * scale, egui::Stroke::new(2.0 * scale, CONCRETE), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        track_rect,
+        2.0 * scale,
+        egui::Stroke::new(2.0 * scale, CONCRETE),
+        egui::StrokeKind::Outside,
+    );
 
     // Fill from bottom
     let fill_height = track_height * normalized;
@@ -831,14 +1366,25 @@ fn industrial_vfader(
         egui::vec2(thumb_width, thumb_height),
     );
     painter.rect_filled(thumb_rect, 2.0, THUMB_BG);
-    painter.rect_stroke(thumb_rect, 2.0, egui::Stroke::new(2.0 * scale, THUMB_BORDER), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        thumb_rect,
+        2.0,
+        egui::Stroke::new(2.0 * scale, THUMB_BORDER),
+        egui::StrokeKind::Outside,
+    );
     // Crosshair
     painter.line_segment(
-        [thumb_rect.center() - egui::vec2(thumb_width * 0.3, 0.0), thumb_rect.center() + egui::vec2(thumb_width * 0.3, 0.0)],
+        [
+            thumb_rect.center() - egui::vec2(thumb_width * 0.3, 0.0),
+            thumb_rect.center() + egui::vec2(thumb_width * 0.3, 0.0),
+        ],
         egui::Stroke::new(1.5 * scale, OFF_WHITE),
     );
     painter.line_segment(
-        [thumb_rect.center() - egui::vec2(0.0, thumb_height * 0.3), thumb_rect.center() + egui::vec2(0.0, thumb_height * 0.3)],
+        [
+            thumb_rect.center() - egui::vec2(0.0, thumb_height * 0.3),
+            thumb_rect.center() + egui::vec2(0.0, thumb_height * 0.3),
+        ],
         egui::Stroke::new(1.0 * scale, OFF_WHITE),
     );
 
@@ -874,14 +1420,25 @@ fn industrial_combo(
         .unwrap_or("Unknown");
 
     ui.vertical(|ui| {
-        ui.label(egui::RichText::new(label.to_uppercase()).size(9.0 * scale).color(MUTED_GREY));
+        ui.label(
+            egui::RichText::new(label.to_uppercase())
+                .size(9.0 * scale)
+                .color(MUTED_GREY),
+        );
         egui::ComboBox::from_id_salt(id)
-            .selected_text(egui::RichText::new(selected).size(11.0 * scale).color(OFF_WHITE))
+            .selected_text(
+                egui::RichText::new(selected)
+                    .size(11.0 * scale)
+                    .color(OFF_WHITE),
+            )
             .show_ui(ui, |ui| {
                 for (value, name) in items {
                     let is_selected = current == *value;
                     if ui
-                        .selectable_label(is_selected, egui::RichText::new(*name).size(11.0 * scale))
+                        .selectable_label(
+                            is_selected,
+                            egui::RichText::new(*name).size(11.0 * scale),
+                        )
                         .clicked()
                     {
                         setter.begin_set_parameter(param);
@@ -912,9 +1469,14 @@ fn recessed_panel(scale: f32) -> egui::Frame {
     egui::Frame::new()
         .fill(RECESSED_BG)
         .inner_margin(egui::Margin::same((6.0 * scale) as i8))
-        .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgb(0x22, 0x22, 0x22)))
+        .stroke(egui::Stroke::new(
+            1.0,
+            egui::Color32::from_rgb(0x22, 0x22, 0x22),
+        ))
         .shadow(egui::epaint::Shadow {
-            offset: [2, 2], blur: 6, spread: 0,
+            offset: [2, 2],
+            blur: 6,
+            spread: 0,
             color: egui::Color32::from_black_alpha(180),
         })
 }
@@ -926,7 +1488,9 @@ fn metal_panel(scale: f32) -> egui::Frame {
         .inner_margin(egui::Margin::same((8.0 * scale) as i8))
         .stroke(egui::Stroke::new(1.0, STEEL_LIGHT))
         .shadow(egui::epaint::Shadow {
-            offset: [2, 2], blur: 6, spread: 0,
+            offset: [2, 2],
+            blur: 6,
+            spread: 0,
             color: egui::Color32::from_black_alpha(150),
         })
 }
@@ -934,12 +1498,21 @@ fn metal_panel(scale: f32) -> egui::Frame {
 /// Draw a section heading with accent color.
 fn section_heading(ui: &mut egui::Ui, text: &str, accent: egui::Color32, scale: f32) {
     ui.horizontal(|ui| {
-        ui.label(egui::RichText::new(text).size(10.0 * scale).color(OFF_WHITE).strong());
+        ui.label(
+            egui::RichText::new(text)
+                .size(10.0 * scale)
+                .color(OFF_WHITE)
+                .strong(),
+        );
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let rect = ui.available_rect_before_wrap();
             let painter = ui.painter();
             // Small accent dot
-            painter.circle_filled(egui::pos2(rect.right() - 4.0 * scale, rect.center().y), 3.0 * scale, accent);
+            painter.circle_filled(
+                egui::pos2(rect.right() - 4.0 * scale, rect.center().y),
+                3.0 * scale,
+                accent,
+            );
         });
     });
     // Separator line
@@ -954,14 +1527,15 @@ fn section_heading(ui: &mut egui::Ui, text: &str, accent: egui::Color32, scale: 
 
 /// Paint a vertical separator line within the current layout.
 fn paint_vseparator(ui: &mut egui::Ui, scale: f32) {
-    let (rect, _) = ui.allocate_exact_size(
-        egui::vec2(12.0 * scale, 40.0 * scale),
-        egui::Sense::hover(),
-    );
+    let (rect, _) =
+        ui.allocate_exact_size(egui::vec2(12.0 * scale, 40.0 * scale), egui::Sense::hover());
     let painter = ui.painter();
     let x = rect.center().x;
     painter.line_segment(
-        [egui::pos2(x, rect.min.y + 4.0 * scale), egui::pos2(x, rect.max.y - 4.0 * scale)],
+        [
+            egui::pos2(x, rect.min.y + 4.0 * scale),
+            egui::pos2(x, rect.max.y - 4.0 * scale),
+        ],
         egui::Stroke::new(1.0, CONCRETE),
     );
 }
@@ -985,10 +1559,26 @@ fn render_ui(
     // Screws in corners
     let screw_r = 6.0 * scale;
     let margin = 12.0 * scale;
-    paint_screw(&painter, egui::pos2(shell_rect.min.x + margin, shell_rect.min.y + margin), screw_r);
-    paint_screw(&painter, egui::pos2(shell_rect.max.x - margin, shell_rect.min.y + margin), screw_r);
-    paint_screw(&painter, egui::pos2(shell_rect.min.x + margin, shell_rect.max.y - margin), screw_r);
-    paint_screw(&painter, egui::pos2(shell_rect.max.x - margin, shell_rect.max.y - margin), screw_r);
+    paint_screw(
+        &painter,
+        egui::pos2(shell_rect.min.x + margin, shell_rect.min.y + margin),
+        screw_r,
+    );
+    paint_screw(
+        &painter,
+        egui::pos2(shell_rect.max.x - margin, shell_rect.min.y + margin),
+        screw_r,
+    );
+    paint_screw(
+        &painter,
+        egui::pos2(shell_rect.min.x + margin, shell_rect.max.y - margin),
+        screw_r,
+    );
+    paint_screw(
+        &painter,
+        egui::pos2(shell_rect.max.x - margin, shell_rect.max.y - margin),
+        screw_r,
+    );
 
     // Header
     render_header(ui, params, setter, state, scale);
@@ -1057,17 +1647,70 @@ fn render_header(
 
                 // Output / Width / Body vertical faders
                 ui.horizontal(|ui| {
-                    vfader_global(ui, "OUT", &params.output, 0.0, util::db_to_gain(40.0), setter, SAFETY_YELLOW, scale);
-                    vfader_global(ui, "WIDTH", &params.width, -2.0, 3.0, setter, RUST_ORANGE, scale);
-                    vfader_global(ui, "BODY", &params.body, 0.0, 5.0, setter, DANGER_RED, scale);
+                    vfader_global(
+                        ui,
+                        "OUT",
+                        &params.output,
+                        0.0,
+                        util::db_to_gain(40.0),
+                        setter,
+                        SAFETY_YELLOW,
+                        scale,
+                    );
+                    vfader_global(
+                        ui,
+                        "WIDTH",
+                        &params.width,
+                        -2.0,
+                        3.0,
+                        setter,
+                        RUST_ORANGE,
+                        scale,
+                    );
+                    vfader_global(
+                        ui,
+                        "BODY",
+                        &params.body,
+                        0.0,
+                        5.0,
+                        setter,
+                        DANGER_RED,
+                        scale,
+                    );
                 });
 
                 paint_vseparator(ui, scale);
 
                 // UI Scale
-                industrial_combo(ui, "ui-scale-header", "SCALE", &params.ui_scale, &[
-                    (0, "50%"), (1, "75%"), (2, "100%"), (3, "125%"), (4, "150%"),
-                ], setter, MUTED_GREY, scale);
+                industrial_combo(
+                    ui,
+                    "ui-scale-header",
+                    "SCALE",
+                    &params.ui_scale,
+                    &[
+                        (0, "50%"),
+                        (1, "75%"),
+                        (2, "100%"),
+                        (3, "125%"),
+                        (4, "150%"),
+                    ],
+                    setter,
+                    MUTED_GREY,
+                    scale,
+                );
+
+                paint_vseparator(ui, scale);
+
+                industrial_combo(
+                    ui,
+                    "quality-mode-header",
+                    "QUALITY",
+                    &params.quality_mode,
+                    &[(0, "Eco"), (1, "Normal"), (2, "High"), (3, "Render")],
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
 
                 paint_vseparator(ui, scale);
 
@@ -1154,7 +1797,12 @@ fn vfader_global(
         egui::pos2(cx + track_width * 0.5, track_top + track_height),
     );
     painter.rect_filled(track_rect, 2.0, RECESSED_BG);
-    painter.rect_stroke(track_rect, 2.0, egui::Stroke::new(1.0, CONCRETE), egui::StrokeKind::Outside);
+    painter.rect_stroke(
+        track_rect,
+        2.0,
+        egui::Stroke::new(1.0, CONCRETE),
+        egui::StrokeKind::Outside,
+    );
 
     // Fill
     let fill_height = track_height * normalized;
@@ -1179,10 +1827,18 @@ fn render_preset_loader(
     scale: f32,
 ) {
     ui.vertical(|ui| {
-        ui.label(egui::RichText::new("PRESET").size(8.0 * scale).color(MUTED_GREY));
+        ui.label(
+            egui::RichText::new("PRESET")
+                .size(8.0 * scale)
+                .color(MUTED_GREY),
+        );
         ui.horizontal(|ui| {
             if state.factory_presets.is_empty() {
-                ui.label(egui::RichText::new("No presets").size(9.0 * scale).color(MUTED_GREY));
+                ui.label(
+                    egui::RichText::new("No presets")
+                        .size(9.0 * scale)
+                        .color(MUTED_GREY),
+                );
                 return;
             }
 
@@ -1194,11 +1850,18 @@ fn render_preset_loader(
                 .as_str();
 
             egui::ComboBox::from_id_salt("factory-preset-loader")
-                .selected_text(egui::RichText::new(selected_name).size(9.0 * scale).color(OFF_WHITE))
+                .selected_text(
+                    egui::RichText::new(selected_name)
+                        .size(9.0 * scale)
+                        .color(OFF_WHITE),
+                )
                 .show_ui(ui, |ui| {
                     for (index, preset) in state.factory_presets.iter().enumerate() {
                         if ui
-                            .selectable_label(index == state.selected_factory_preset, egui::RichText::new(&preset.name).size(9.0 * scale))
+                            .selectable_label(
+                                index == state.selected_factory_preset,
+                                egui::RichText::new(&preset.name).size(9.0 * scale),
+                            )
                             .clicked()
                         {
                             state.selected_factory_preset = index;
@@ -1206,7 +1869,10 @@ fn render_preset_loader(
                     }
                 });
 
-            if ui.button(egui::RichText::new("LOAD").size(9.0 * scale)).clicked() {
+            if ui
+                .button(egui::RichText::new("LOAD").size(9.0 * scale))
+                .clicked()
+            {
                 let entry = state.factory_presets[state.selected_factory_preset].clone();
                 match Preset::load(&entry.path) {
                     Ok(preset) => {
@@ -1220,21 +1886,157 @@ fn render_preset_loader(
             }
         });
         if let Some(status) = &state.last_preset_status {
-            ui.label(egui::RichText::new(status).size(8.0 * scale).color(MUTED_GREY));
+            ui.label(
+                egui::RichText::new(status)
+                    .size(8.0 * scale)
+                    .color(MUTED_GREY),
+            );
         }
     });
 }
 
 fn apply_preset(params: &CorrosionParams, setter: &ParamSetter, preset: &Preset) {
-    setter.set_parameter(&params.object, preset.object.to_int());
-    setter.set_parameter(&params.exciter, preset.exciter);
-    setter.set_parameter(&params.size, preset.size);
-    setter.set_parameter(&params.rust, preset.rust);
-    setter.set_parameter(&params.damage, preset.damage);
-    setter.set_parameter(&params.drive, preset.drive);
-    setter.set_parameter(&params.output, preset.output);
-    setter.set_parameter(&params.width, preset.width);
-    setter.set_parameter(&params.body, preset.body);
+    let loaded = preset.clone().into_params();
+
+    macro_rules! set_float {
+        ($field:ident) => {
+            setter.set_parameter(&params.$field, loaded.$field.value());
+        };
+    }
+
+    macro_rules! set_int {
+        ($field:ident) => {
+            setter.set_parameter(&params.$field, loaded.$field.value());
+        };
+    }
+
+    set_int!(object);
+    set_int!(exciter);
+    set_int!(quality_mode);
+    set_int!(ui_scale);
+    set_int!(loop_mode);
+    set_int!(loop_start_stage);
+    set_int!(loop_end_stage);
+    set_int!(space_mode);
+
+    set_float!(size);
+    set_float!(rust);
+    set_float!(damage);
+    set_float!(drive);
+    set_float!(output);
+    set_float!(width);
+    set_float!(body);
+    set_float!(env_attack);
+    set_float!(env_decay);
+    set_float!(env_sustain);
+    set_float!(env_release);
+    set_float!(mseg_onset);
+    set_float!(mseg_attack);
+    set_float!(mseg_hold);
+    set_float!(mseg_decay);
+    set_float!(mseg_sustain);
+    set_float!(mseg_release);
+    set_float!(env_amount);
+    set_float!(velocity_to_peak);
+    set_float!(sync_rate);
+    set_float!(global_time_scale);
+    set_float!(velocity_to_level);
+    set_float!(velocity_to_time);
+    set_float!(curve_tension);
+    set_float!(exciter_pressure);
+    set_float!(exciter_speed);
+    set_float!(exciter_roughness);
+    set_float!(hand_mass);
+    set_float!(flesh_stiffness);
+    set_float!(flesh_damping);
+    set_float!(mute_decay);
+    set_float!(mallet_mass);
+    set_float!(felt_softness);
+    set_float!(core_hardness);
+    set_float!(compression_curve);
+    set_float!(material_stiffness);
+    set_float!(impact_damping);
+    set_float!(stick_mass);
+    set_float!(tip_stiffness);
+    set_float!(restitution_bounciness);
+    set_float!(micro_bounce_limit);
+    set_float!(wire_density);
+    set_float!(spread_duration);
+    set_float!(brush_wire_stiffness);
+    set_float!(amplitude_randomization);
+    set_float!(pipe_mass);
+    set_float!(metal_stiffness);
+    set_float!(pipe_pitch);
+    set_float!(pipe_ring_decay);
+    set_float!(link_count);
+    set_float!(chain_mass);
+    set_float!(drop_envelope_spread);
+    set_float!(internal_rattle);
+    set_float!(rattle_color);
+    set_float!(bow_pressure);
+    set_float!(bow_speed);
+    set_float!(rosin_grip);
+    set_float!(slip_curve);
+    set_float!(scrape_speed);
+    set_float!(point_pressure);
+    set_float!(chatter_pitch);
+    set_float!(chatter_damping);
+    set_float!(grind_speed);
+    set_float!(grind_pressure);
+    set_float!(surface_grit);
+    set_float!(grit_color);
+    set_float!(drag_speed);
+    set_float!(ridge_spacing);
+    set_float!(ridge_depth);
+    set_float!(drag_exciter_mass);
+    set_float!(pull_speed);
+    set_float!(break_threshold);
+    set_float!(slip_stochasticity);
+    set_float!(creak_sharpness);
+    set_float!(air_pressure);
+    set_float!(nozzle_width);
+    set_float!(turbulence_chaos);
+    set_float!(mains_frequency);
+    set_float!(coil_proximity);
+    set_float!(voltage_sag);
+    set_float!(pull_distance);
+    set_float!(hook_stiffness);
+    set_float!(snap_force);
+    set_float!(flow_rate);
+    set_float!(particle_mass);
+    set_float!(mass_variance);
+    set_float!(strike_position);
+    set_float!(coupling_stiffness);
+    set_float!(position_wander);
+    set_float!(position_envelope);
+    set_float!(fundamental_anchor);
+    set_float!(res_damping);
+    set_float!(res_brightness);
+    set_float!(thickness);
+    set_float!(heat);
+    set_float!(sludge);
+    set_float!(filter_cutoff);
+    set_float!(filter_resonance);
+    set_float!(component_tolerance);
+    set_float!(drive_amount);
+    set_float!(bias_starvation);
+    set_float!(chaos_depth);
+    set_float!(spread_width);
+    set_float!(listener_proximity);
+    set_float!(chassis_material);
+    set_float!(chassis_volume);
+    set_float!(space_amount);
+    set_float!(factory_size);
+    set_float!(machinery_clutter);
+    set_float!(wall_impedance);
+    set_float!(spring_tension);
+    set_float!(wire_stiffness);
+    set_float!(spring_tank_size);
+    set_float!(delay_time);
+    set_float!(machinery_movement);
+    set_float!(high_frequency_damping);
+    set_float!(analog_ceiling);
+    set_float!(diode_softness);
 }
 
 fn load_factory_presets() -> Vec<FactoryPresetEntry> {
@@ -1293,7 +2095,16 @@ fn render_exciter_column(
 
         // Model selector
         let exciter = ExciterType::from_int(params.exciter.value());
-        industrial_combo(ui, "exciter-model", "Model Type", &params.exciter, exciter_model_items(), setter, SAFETY_YELLOW, scale);
+        industrial_combo(
+            ui,
+            "exciter-model",
+            "Model Type",
+            &params.exciter,
+            exciter_model_items(),
+            setter,
+            SAFETY_YELLOW,
+            scale,
+        );
 
         // Description
         let panel_spec = exciter_panel(exciter);
@@ -1335,12 +2146,66 @@ fn render_exciter_column(
         let recessed = recessed_panel(scale);
         recessed.show(ui, |ui| {
             section_heading(ui, "Gesture Modifiers", SAFETY_YELLOW, scale);
-            industrial_fader(ui, "Env Amount", &params.env_amount, 0.0, 1.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Vel To Peak", &params.velocity_to_peak, 0.0, 1.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Global Time", &params.global_time_scale, 0.1, 10.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Vel To Level", &params.velocity_to_level, 0.0, 1.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Vel To Time", &params.velocity_to_time, 0.0, 1.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Curve", &params.curve_tension, -1.0, 1.0, setter, OFF_WHITE, scale);
+            industrial_fader(
+                ui,
+                "Env Amount",
+                &params.env_amount,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Vel To Peak",
+                &params.velocity_to_peak,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Global Time",
+                &params.global_time_scale,
+                0.1,
+                10.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Vel To Level",
+                &params.velocity_to_level,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Vel To Time",
+                &params.velocity_to_time,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Curve",
+                &params.curve_tension,
+                -1.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
         });
     });
 }
@@ -1353,82 +2218,221 @@ fn render_envelope(
     scale: f32,
 ) {
     let recessed = recessed_panel(scale);
-    recessed.show(ui, |ui| {
-        match family {
-            ExciterFamily::Hit => {
-                section_heading(ui, "Force Envelope (AD)", SAFETY_YELLOW, scale);
-                ui.label(egui::RichText::new("One-shot impact envelope").size(8.0 * scale).color(MUTED_GREY));
-                ui.add_space(4.0 * scale);
-                let fader_w = 44.0 * scale;
-                let gap = 20.0 * scale;
-                let avail = ui.available_width();
-                let total = 2.0 * fader_w + gap;
-                let offset = ((avail - total) / 2.0).max(0.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(offset);
-                    industrial_vfader(ui, "Attack", &params.env_attack, 0.001, 2.0, setter, SAFETY_YELLOW, scale);
-                    ui.add_space(gap);
-                    industrial_vfader(ui, "Release", &params.env_release, 0.01, 5.0, setter, SAFETY_YELLOW, scale);
-                });
-            }
-            ExciterFamily::Friction => {
-                section_heading(ui, "Force Envelope (MSEG)", SAFETY_YELLOW, scale);
-                ui.label(egui::RichText::new("6-stage gesture envelope").size(8.0 * scale).color(MUTED_GREY));
-                ui.add_space(4.0 * scale);
-                let fader_w = 44.0 * scale;
-                let gap = 12.0 * scale;
-                let avail = ui.available_width();
-                let total = 3.0 * fader_w + 2.0 * gap;
-                let offset = ((avail - total) / 2.0).max(0.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(offset);
-                    industrial_vfader(ui, "Onset", &params.mseg_onset, 0.001, 1.0, setter, SAFETY_YELLOW, scale);
-                    ui.add_space(gap);
-                    industrial_vfader(ui, "Attack", &params.mseg_attack, 0.001, 2.0, setter, SAFETY_YELLOW, scale);
-                    ui.add_space(gap);
-                    industrial_vfader(ui, "Hold", &params.mseg_hold, 0.0, 2.0, setter, SAFETY_YELLOW, scale);
-                });
-                ui.horizontal(|ui| {
-                    ui.add_space(offset);
-                    industrial_vfader(ui, "Decay", &params.mseg_decay, 0.01, 5.0, setter, SAFETY_YELLOW, scale);
-                    ui.add_space(gap);
-                    industrial_vfader(ui, "Sustain", &params.mseg_sustain, 0.0, 1.0, setter, SAFETY_YELLOW, scale);
-                    ui.add_space(gap);
-                    industrial_vfader(ui, "Release", &params.mseg_release, 0.01, 5.0, setter, SAFETY_YELLOW, scale);
-                });
-                ui.add_space(4.0 * scale);
-                industrial_combo(ui, "loop-mode", "Loop", &params.loop_mode, &[
-                    (0, "Off"), (1, "Forward"), (2, "Ping-Pong"),
-                ], setter, SAFETY_YELLOW, scale);
-                ui.horizontal(|ui| {
-                    industrial_combo(ui, "loop-start", "Start", &params.loop_start_stage, &[
-                        (0, "0"), (1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "5"),
-                    ], setter, SAFETY_YELLOW, scale);
-                    industrial_combo(ui, "loop-end", "End", &params.loop_end_stage, &[
-                        (0, "0"), (1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "5"),
-                    ], setter, SAFETY_YELLOW, scale);
-                });
-            }
-            ExciterFamily::Specialty => {
-                section_heading(ui, "Force Envelope (ADSR)", SAFETY_YELLOW, scale);
-                ui.label(egui::RichText::new("ADSR force shaping").size(8.0 * scale).color(MUTED_GREY));
-                ui.add_space(4.0 * scale);
-                let fader_w = 44.0 * scale;
-                let gap = 8.0 * scale;
-                let avail = ui.available_width();
-                let total = 4.0 * fader_w + 3.0 * gap;
-                let offset = ((avail - total) / 2.0).max(0.0);
-                ui.horizontal(|ui| {
-                    ui.add_space(offset);
-                    industrial_vfader(ui, "Attack", &params.env_attack, 0.001, 2.0, setter, SAFETY_YELLOW, scale);
-                    ui.add_space(gap);
-                    industrial_vfader(ui, "Decay", &params.env_decay, 0.01, 5.0, setter, SAFETY_YELLOW, scale);
-                    ui.add_space(gap);
-                    industrial_vfader(ui, "Sustain", &params.env_sustain, 0.0, 1.0, setter, SAFETY_YELLOW, scale);
-                    ui.add_space(gap);
-                    industrial_vfader(ui, "Release", &params.env_release, 0.01, 5.0, setter, SAFETY_YELLOW, scale);
-                });
-            }
+    recessed.show(ui, |ui| match family {
+        ExciterFamily::Hit => {
+            section_heading(ui, "Force Envelope (AD)", SAFETY_YELLOW, scale);
+            ui.label(
+                egui::RichText::new("One-shot impact envelope")
+                    .size(8.0 * scale)
+                    .color(MUTED_GREY),
+            );
+            ui.add_space(4.0 * scale);
+            let fader_w = 44.0 * scale;
+            let gap = 20.0 * scale;
+            let avail = ui.available_width();
+            let total = 2.0 * fader_w + gap;
+            let offset = ((avail - total) / 2.0).max(0.0);
+            ui.horizontal(|ui| {
+                ui.add_space(offset);
+                industrial_vfader(
+                    ui,
+                    "Attack",
+                    &params.env_attack,
+                    0.001,
+                    2.0,
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
+                ui.add_space(gap);
+                industrial_vfader(
+                    ui,
+                    "Release",
+                    &params.env_release,
+                    0.01,
+                    5.0,
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
+            });
+        }
+        ExciterFamily::Friction => {
+            section_heading(ui, "Force Envelope (MSEG)", SAFETY_YELLOW, scale);
+            ui.label(
+                egui::RichText::new("6-stage gesture envelope")
+                    .size(8.0 * scale)
+                    .color(MUTED_GREY),
+            );
+            ui.add_space(4.0 * scale);
+            let fader_w = 44.0 * scale;
+            let gap = 12.0 * scale;
+            let avail = ui.available_width();
+            let total = 3.0 * fader_w + 2.0 * gap;
+            let offset = ((avail - total) / 2.0).max(0.0);
+            ui.horizontal(|ui| {
+                ui.add_space(offset);
+                industrial_vfader(
+                    ui,
+                    "Onset",
+                    &params.mseg_onset,
+                    0.001,
+                    1.0,
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
+                ui.add_space(gap);
+                industrial_vfader(
+                    ui,
+                    "Attack",
+                    &params.mseg_attack,
+                    0.001,
+                    2.0,
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
+                ui.add_space(gap);
+                industrial_vfader(
+                    ui,
+                    "Hold",
+                    &params.mseg_hold,
+                    0.0,
+                    2.0,
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.add_space(offset);
+                industrial_vfader(
+                    ui,
+                    "Decay",
+                    &params.mseg_decay,
+                    0.01,
+                    5.0,
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
+                ui.add_space(gap);
+                industrial_vfader(
+                    ui,
+                    "Sustain",
+                    &params.mseg_sustain,
+                    0.0,
+                    1.0,
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
+                ui.add_space(gap);
+                industrial_vfader(
+                    ui,
+                    "Release",
+                    &params.mseg_release,
+                    0.01,
+                    5.0,
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
+            });
+            ui.add_space(4.0 * scale);
+            industrial_combo(
+                ui,
+                "loop-mode",
+                "Loop",
+                &params.loop_mode,
+                &[(0, "Off"), (1, "Forward"), (2, "Ping-Pong")],
+                setter,
+                SAFETY_YELLOW,
+                scale,
+            );
+            ui.horizontal(|ui| {
+                industrial_combo(
+                    ui,
+                    "loop-start",
+                    "Start",
+                    &params.loop_start_stage,
+                    &[(0, "0"), (1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "5")],
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
+                industrial_combo(
+                    ui,
+                    "loop-end",
+                    "End",
+                    &params.loop_end_stage,
+                    &[(0, "0"), (1, "1"), (2, "2"), (3, "3"), (4, "4"), (5, "5")],
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
+            });
+        }
+        ExciterFamily::Specialty => {
+            section_heading(ui, "Force Envelope (ADSR)", SAFETY_YELLOW, scale);
+            ui.label(
+                egui::RichText::new("ADSR force shaping")
+                    .size(8.0 * scale)
+                    .color(MUTED_GREY),
+            );
+            ui.add_space(4.0 * scale);
+            let fader_w = 44.0 * scale;
+            let gap = 8.0 * scale;
+            let avail = ui.available_width();
+            let total = 4.0 * fader_w + 3.0 * gap;
+            let offset = ((avail - total) / 2.0).max(0.0);
+            ui.horizontal(|ui| {
+                ui.add_space(offset);
+                industrial_vfader(
+                    ui,
+                    "Attack",
+                    &params.env_attack,
+                    0.001,
+                    2.0,
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
+                ui.add_space(gap);
+                industrial_vfader(
+                    ui,
+                    "Decay",
+                    &params.env_decay,
+                    0.01,
+                    5.0,
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
+                ui.add_space(gap);
+                industrial_vfader(
+                    ui,
+                    "Sustain",
+                    &params.env_sustain,
+                    0.0,
+                    1.0,
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
+                ui.add_space(gap);
+                industrial_vfader(
+                    ui,
+                    "Release",
+                    &params.env_release,
+                    0.01,
+                    5.0,
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                );
+            });
         }
     });
 }
@@ -1466,7 +2470,16 @@ fn render_resonator_column(
         let object_items: Vec<(i32, &'static str)> = (0..=8)
             .map(|value| (value, Object::from_int(value).name()))
             .collect();
-        industrial_combo(ui, "resonator-model", "Material", &params.object, &object_items, setter, RUST_ORANGE, scale);
+        industrial_combo(
+            ui,
+            "resonator-model",
+            "Material",
+            &params.object,
+            &object_items,
+            setter,
+            RUST_ORANGE,
+            scale,
+        );
 
         // Description
         let panel_spec = resonator_panel(object);
@@ -1510,10 +2523,46 @@ fn render_resonator_column(
         let recessed = recessed_panel(scale);
         recessed.show(ui, |ui| {
             section_heading(ui, "Environmental Exposure", DANGER_RED, scale);
-            industrial_fader(ui, "Rust", &params.rust, 0.0, 5.0, setter, RUST_ORANGE, scale);
-            industrial_fader(ui, "Damage", &params.damage, 0.0, 10.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Heat", &params.heat, 0.0, 1.0, setter, DANGER_RED, scale);
-            industrial_fader(ui, "Sludge", &params.sludge, 0.0, 1.0, setter, SAFETY_YELLOW, scale);
+            industrial_fader(
+                ui,
+                "Rust",
+                &params.rust,
+                0.0,
+                5.0,
+                setter,
+                RUST_ORANGE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Damage",
+                &params.damage,
+                0.0,
+                10.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Heat",
+                &params.heat,
+                0.0,
+                1.0,
+                setter,
+                DANGER_RED,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Sludge",
+                &params.sludge,
+                0.0,
+                1.0,
+                setter,
+                SAFETY_YELLOW,
+                scale,
+            );
         });
 
         ui.add_space(4.0 * scale);
@@ -1522,11 +2571,56 @@ fn render_resonator_column(
         let recessed = recessed_panel(scale);
         recessed.show(ui, |ui| {
             section_heading(ui, "Mechanical Linkage", OFF_WHITE, scale);
-            industrial_fader(ui, "Strike Pos", &params.strike_position, 0.0, 1.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Coupling", &params.coupling_stiffness, 0.0, 1.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Pos Wander", &params.position_wander, 0.0, 1.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Pos Env", &params.position_envelope, 0.0, 1.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Anchor", &params.fundamental_anchor, 0.0, 1.0, setter, OFF_WHITE, scale);
+            industrial_fader(
+                ui,
+                "Strike Pos",
+                &params.strike_position,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Coupling",
+                &params.coupling_stiffness,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Pos Wander",
+                &params.position_wander,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Pos Env",
+                &params.position_envelope,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Anchor",
+                &params.fundamental_anchor,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
         });
     });
 }
@@ -1567,7 +2661,17 @@ fn render_processing_column(
             let cutoff_offset = ((ui.available_width() - large_knob_w) / 2.0).max(0.0);
             ui.horizontal(|ui| {
                 ui.add_space(cutoff_offset);
-                industrial_knob(ui, "Cutoff", &params.filter_cutoff, 20.0, 20000.0, setter, SAFETY_YELLOW, scale, true);
+                industrial_knob(
+                    ui,
+                    "Cutoff",
+                    &params.filter_cutoff,
+                    20.0,
+                    20000.0,
+                    setter,
+                    SAFETY_YELLOW,
+                    scale,
+                    true,
+                );
             });
             ui.add_space(4.0 * scale);
             let small_knob_w = 18.0 * scale * 2.0 + 8.0 * scale;
@@ -1575,9 +2679,29 @@ fn render_processing_column(
             let pair_offset = ((ui.available_width() - pair_w) / 2.0).max(0.0);
             ui.horizontal(|ui| {
                 ui.add_space(pair_offset);
-                industrial_knob(ui, "Resonance", &params.filter_resonance, 0.0, 1.0, setter, OFF_WHITE, scale, false);
+                industrial_knob(
+                    ui,
+                    "Resonance",
+                    &params.filter_resonance,
+                    0.0,
+                    1.0,
+                    setter,
+                    OFF_WHITE,
+                    scale,
+                    false,
+                );
                 ui.add_space(16.0 * scale);
-                industrial_knob(ui, "Tolerance", &params.component_tolerance, 0.0, 1.0, setter, OFF_WHITE, scale, false);
+                industrial_knob(
+                    ui,
+                    "Tolerance",
+                    &params.component_tolerance,
+                    0.0,
+                    1.0,
+                    setter,
+                    OFF_WHITE,
+                    scale,
+                    false,
+                );
             });
         });
 
@@ -1587,10 +2711,46 @@ fn render_processing_column(
         let recessed = recessed_panel(scale);
         recessed.show(ui, |ui| {
             section_heading(ui, "Overdrive Unit", OFF_WHITE, scale);
-            industrial_fader(ui, "Drive Amt", &params.drive_amount, 0.0, 5.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Bias Starve", &params.bias_starvation, 0.0, 1.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Chaos", &params.chaos_depth, 0.0, 1.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Legacy Drive", &params.drive, 0.0, 5.0, setter, OFF_WHITE, scale);
+            industrial_fader(
+                ui,
+                "Drive Amt",
+                &params.drive_amount,
+                0.0,
+                5.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Bias Starve",
+                &params.bias_starvation,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Chaos",
+                &params.chaos_depth,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Legacy Drive",
+                &params.drive,
+                0.0,
+                5.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
         });
 
         ui.add_space(4.0 * scale);
@@ -1599,10 +2759,46 @@ fn render_processing_column(
         let recessed = recessed_panel(scale);
         recessed.show(ui, |ui| {
             section_heading(ui, "Dispersion", OFF_WHITE, scale);
-            industrial_fader(ui, "Chassis Mat", &params.chassis_material, 0.0, 1.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Chassis Vol", &params.chassis_volume, 0.0, 1.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Spread", &params.spread_width, 0.0, 1.0, setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Proximity", &params.listener_proximity, 0.0, 1.0, setter, OFF_WHITE, scale);
+            industrial_fader(
+                ui,
+                "Chassis Mat",
+                &params.chassis_material,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Chassis Vol",
+                &params.chassis_volume,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Spread",
+                &params.spread_width,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Proximity",
+                &params.listener_proximity,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
         });
 
         ui.add_space(4.0 * scale);
@@ -1611,25 +2807,122 @@ fn render_processing_column(
         let recessed = recessed_panel(scale);
         recessed.show(ui, |ui| {
             section_heading(ui, "Space", OFF_WHITE, scale);
-            industrial_combo(ui, "space-mode", "Mode", &params.space_mode, &[
-                (0, "Off"), (1, "Factory"), (2, "Spring"), (3, "Echo"),
-            ], setter, OFF_WHITE, scale);
-            industrial_fader(ui, "Amount", &params.space_amount, 0.0, 1.0, setter, OFF_WHITE, scale);
+            industrial_combo(
+                ui,
+                "space-mode",
+                "Mode",
+                &params.space_mode,
+                &[(0, "Off"), (1, "Factory"), (2, "Spring"), (3, "Echo")],
+                setter,
+                OFF_WHITE,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Amount",
+                &params.space_amount,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
             match params.space_mode.value() {
                 1 => {
-                    industrial_fader(ui, "Factory Size", &params.factory_size, 0.0, 1.0, setter, OFF_WHITE, scale);
-                    industrial_fader(ui, "Machinery", &params.machinery_clutter, 0.0, 1.0, setter, OFF_WHITE, scale);
-                    industrial_fader(ui, "Wall Impedance", &params.wall_impedance, 0.0, 1.0, setter, OFF_WHITE, scale);
+                    industrial_fader(
+                        ui,
+                        "Factory Size",
+                        &params.factory_size,
+                        0.0,
+                        1.0,
+                        setter,
+                        OFF_WHITE,
+                        scale,
+                    );
+                    industrial_fader(
+                        ui,
+                        "Machinery",
+                        &params.machinery_clutter,
+                        0.0,
+                        1.0,
+                        setter,
+                        OFF_WHITE,
+                        scale,
+                    );
+                    industrial_fader(
+                        ui,
+                        "Wall Impedance",
+                        &params.wall_impedance,
+                        0.0,
+                        1.0,
+                        setter,
+                        OFF_WHITE,
+                        scale,
+                    );
                 }
                 2 => {
-                    industrial_fader(ui, "Spring Tension", &params.spring_tension, 0.0, 1.0, setter, OFF_WHITE, scale);
-                    industrial_fader(ui, "Wire Stiffness", &params.wire_stiffness, 0.0, 1.0, setter, OFF_WHITE, scale);
-                    industrial_fader(ui, "Tank Size", &params.spring_tank_size, 0.0, 1.0, setter, OFF_WHITE, scale);
+                    industrial_fader(
+                        ui,
+                        "Spring Tension",
+                        &params.spring_tension,
+                        0.0,
+                        1.0,
+                        setter,
+                        OFF_WHITE,
+                        scale,
+                    );
+                    industrial_fader(
+                        ui,
+                        "Wire Stiffness",
+                        &params.wire_stiffness,
+                        0.0,
+                        1.0,
+                        setter,
+                        OFF_WHITE,
+                        scale,
+                    );
+                    industrial_fader(
+                        ui,
+                        "Tank Size",
+                        &params.spring_tank_size,
+                        0.0,
+                        1.0,
+                        setter,
+                        OFF_WHITE,
+                        scale,
+                    );
                 }
                 3 => {
-                    industrial_fader(ui, "Delay Time", &params.delay_time, 0.0, 1.0, setter, OFF_WHITE, scale);
-                    industrial_fader(ui, "Movement", &params.machinery_movement, 0.0, 1.0, setter, OFF_WHITE, scale);
-                    industrial_fader(ui, "HF Damping", &params.high_frequency_damping, 0.0, 1.0, setter, OFF_WHITE, scale);
+                    industrial_fader(
+                        ui,
+                        "Delay Time",
+                        &params.delay_time,
+                        0.0,
+                        1.0,
+                        setter,
+                        OFF_WHITE,
+                        scale,
+                    );
+                    industrial_fader(
+                        ui,
+                        "Movement",
+                        &params.machinery_movement,
+                        0.0,
+                        1.0,
+                        setter,
+                        OFF_WHITE,
+                        scale,
+                    );
+                    industrial_fader(
+                        ui,
+                        "HF Damping",
+                        &params.high_frequency_damping,
+                        0.0,
+                        1.0,
+                        setter,
+                        OFF_WHITE,
+                        scale,
+                    );
                 }
                 _ => {}
             }
@@ -1643,7 +2936,9 @@ fn render_processing_column(
             .inner_margin(egui::Margin::same((6.0 * scale) as i8))
             .stroke(egui::Stroke::new(2.0 * scale, DANGER_RED))
             .shadow(egui::epaint::Shadow {
-                offset: [2, 2], blur: 6, spread: 0,
+                offset: [2, 2],
+                blur: 6,
+                spread: 0,
                 color: egui::Color32::from_black_alpha(180),
             });
         limiter_frame.show(ui, |ui| {
@@ -1655,8 +2950,15 @@ fn render_processing_column(
                         .strong(),
                 );
                 // Red indicator dot
-                let (dot_rect, _) = ui.allocate_exact_size(egui::vec2(8.0 * scale, 8.0 * scale), egui::Sense::hover());
-                ui.painter().circle_filled(dot_rect.center(), 4.0 * scale, DANGER_RED.linear_multiply(0.3));
+                let (dot_rect, _) = ui.allocate_exact_size(
+                    egui::vec2(8.0 * scale, 8.0 * scale),
+                    egui::Sense::hover(),
+                );
+                ui.painter().circle_filled(
+                    dot_rect.center(),
+                    4.0 * scale,
+                    DANGER_RED.linear_multiply(0.3),
+                );
             });
             let rect = ui.available_rect_before_wrap();
             ui.painter().line_segment(
@@ -1664,8 +2966,26 @@ fn render_processing_column(
                 egui::Stroke::new(1.0, DANGER_RED),
             );
             ui.add_space(2.0 * scale);
-            industrial_fader(ui, "Ceiling", &params.analog_ceiling, 0.5, 1.0, setter, DANGER_RED, scale);
-            industrial_fader(ui, "Softness", &params.diode_softness, 0.0, 1.0, setter, OFF_WHITE, scale);
+            industrial_fader(
+                ui,
+                "Ceiling",
+                &params.analog_ceiling,
+                0.5,
+                1.0,
+                setter,
+                DANGER_RED,
+                scale,
+            );
+            industrial_fader(
+                ui,
+                "Softness",
+                &params.diode_softness,
+                0.0,
+                1.0,
+                setter,
+                OFF_WHITE,
+                scale,
+            );
         });
     });
 }
@@ -1676,11 +2996,15 @@ fn render_footer(ui: &mut egui::Ui, scale: f32) {
     let painter = ui.painter();
     // Top border
     painter.line_segment(
-        [egui::pos2(rect.min.x, rect.min.y), egui::pos2(rect.max.x, rect.min.y)],
+        [
+            egui::pos2(rect.min.x, rect.min.y),
+            egui::pos2(rect.max.x, rect.min.y),
+        ],
         egui::Stroke::new(2.0 * scale, CONCRETE),
     );
     // Background
-    let footer_rect = egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.min.y + 20.0 * scale));
+    let footer_rect =
+        egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, rect.min.y + 20.0 * scale));
     painter.rect_filled(footer_rect, 0.0, CHARCOAL);
     // Text
     painter.text(
@@ -1922,8 +3246,8 @@ fn resonator_param_ref(params: &CorrosionParams, id: ResonatorControlId) -> &Flo
 #[cfg(test)]
 mod tests {
     use super::{
-        exciter_panel, knob_drag_value, load_factory_presets, persist_editor_size,
-        resonator_panel, scaled_editor_size, sizes_match, ui_scale_factor,
+        exciter_panel, knob_drag_value, load_factory_presets, persist_editor_size, resonator_panel,
+        scaled_editor_size, sizes_match, ui_scale_factor,
     };
     use crate::params::{exciter_model_items, ExciterType, Object};
     use nih_plug_egui::EguiState;

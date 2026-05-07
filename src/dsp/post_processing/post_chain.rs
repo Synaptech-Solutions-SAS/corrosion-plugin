@@ -7,6 +7,15 @@ use super::{
     SpaceMode, SpringReverb, WdfLadderFilter,
 };
 
+/// CPU/quality tradeoff level for the post-processing chain.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PostQualityMode {
+    Eco,
+    Normal,
+    High,
+    Render,
+}
+
 /// Ordered post-processing pipeline for the plugin output.
 pub struct PostProcessingChain {
     filter: WdfLadderFilter,
@@ -20,6 +29,7 @@ pub struct PostProcessingChain {
 
     space_mode: SpaceMode,
     space_amount: f32,
+    quality_mode: PostQualityMode,
 
     sample_rate: f32,
 }
@@ -38,7 +48,19 @@ impl PostProcessingChain {
             clipper: OversampledClipper::new(),
             space_mode: SpaceMode::Off,
             space_amount: 0.0,
+            quality_mode: PostQualityMode::Normal,
             sample_rate: 48000.0,
+        }
+    }
+
+    /// Sets the CPU/quality tradeoff mode for the post-processing chain.
+    pub fn set_quality_mode(&mut self, mode: PostQualityMode) {
+        self.quality_mode = mode;
+        match mode {
+            PostQualityMode::Eco => self.clipper.set_oversample_factor(1),
+            PostQualityMode::Normal => self.clipper.set_oversample_factor(4),
+            PostQualityMode::High => self.clipper.set_oversample_factor(8),
+            PostQualityMode::Render => self.clipper.set_oversample_factor(16),
         }
     }
 
@@ -122,6 +144,12 @@ impl PostProcessingChain {
         // 2. Lorenz Chaotic Drive
         let driven = self.drive.process(filtered);
 
+        if self.quality_mode == PostQualityMode::Eco {
+            let eco_left = left * 0.3 + driven * 0.7;
+            let eco_right = right * 0.3 + driven * 0.7;
+            return self.clipper.process_stereo(eco_left, eco_right);
+        }
+
         // 3. FEM Body Resonator
         let bodied = self.body.process(driven);
 
@@ -161,7 +189,7 @@ impl PostProcessingChain {
             }
         };
 
-        // 6. 16x Oversampled Clipper
+        // 6. Oversampled Clipper
         self.clipper.process_stereo(space_left, space_right)
     }
 
@@ -210,5 +238,58 @@ mod tests {
             assert!(left.abs() <= 1.0, "Left should be bounded by clipper");
             assert!(right.abs() <= 1.0, "Right should be bounded by clipper");
         }
+    }
+
+    #[test]
+    fn eco_mode_bypasses_stages() {
+        let mut eco_chain = PostProcessingChain::new();
+        eco_chain.set_sample_rate(48000.0);
+        eco_chain.set_quality_mode(PostQualityMode::Eco);
+        eco_chain.set_drive_params(1.0, 0.0, 0.0);
+        eco_chain.set_body_params(0.5, 0.8);
+        eco_chain.set_spread_params(0.5, 0.5);
+        eco_chain.set_space_mode(SpaceMode::Factory);
+        eco_chain.set_space_amount(0.5);
+
+        let mut normal_chain = PostProcessingChain::new();
+        normal_chain.set_sample_rate(48000.0);
+        normal_chain.set_quality_mode(PostQualityMode::Normal);
+        normal_chain.set_drive_params(1.0, 0.0, 0.0);
+        normal_chain.set_body_params(0.5, 0.8);
+        normal_chain.set_spread_params(0.5, 0.5);
+        normal_chain.set_space_mode(SpaceMode::Factory);
+        normal_chain.set_space_amount(0.5);
+
+        let mut eco_sum = 0.0_f32;
+        let mut normal_sum = 0.0_f32;
+        for i in 0..100 {
+            let input = (i as f32 * 0.1).sin() * 0.5;
+            let (eco_l, eco_r) = eco_chain.process(input, input);
+            let (normal_l, normal_r) = normal_chain.process(input, input);
+            eco_sum += eco_l.abs() + eco_r.abs();
+            normal_sum += normal_l.abs() + normal_r.abs();
+        }
+
+        assert!(
+            (eco_sum - normal_sum).abs() > 0.01,
+            "Eco mode should produce measurably different output when body/spread/space are active"
+        );
+    }
+
+    #[test]
+    fn quality_mode_changes_oversample_factor() {
+        let mut chain = PostProcessingChain::new();
+        chain.set_sample_rate(48000.0);
+
+        chain.set_quality_mode(PostQualityMode::Eco);
+        let (eco_l, _) = chain.process(2.0, 2.0);
+
+        chain.set_quality_mode(PostQualityMode::Render);
+        let (render_l, _) = chain.process(2.0, 2.0);
+
+        assert!(
+            (eco_l - render_l).abs() > 0.001,
+            "Different oversampling factors should produce different clipped values for large input"
+        );
     }
 }

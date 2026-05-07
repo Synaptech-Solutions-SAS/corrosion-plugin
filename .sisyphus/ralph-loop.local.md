@@ -1,14 +1,13 @@
 ---
 active: true
-iteration: 1
+iteration: 3
 max_iterations: 500
-completion_promise: "VERIFIED"
+completion_promise: "DONE"
 initial_completion_promise: "DONE"
-started_at: "2026-05-06T21:26:32.219Z"
+started_at: "2026-05-07T10:53:36.979Z"
 session_id: "ses_2011fb9fdffe6im5km50qgK4Kp"
 ultrawork: true
-verification_pending: true
 strategy: "continue"
-message_count_at_start: 43
+message_count_at_start: 246
 ---
-Another issue, when I try to crank up or down any knob it jumps back and forth and does move where i want it. Clicking it and  sliding up should increase the value and clickig and sliding down should decrease it
+Do all 3, but beforesimplify the knob logic and IF you have to do it their aethetic because they are still not working, when you slide them they wobble slightly or a lot but do not go in one direction. The do the idle voice, then the aliasing and finally the preset bank

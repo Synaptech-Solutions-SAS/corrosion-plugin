@@ -19,7 +19,7 @@ pub use lorenz_drive::LorenzDrive;
 /// Final oversampled clipper / limiter stage.
 pub use oversampled_clipper::OversampledClipper;
 /// Full post-processing pipeline that wires the individual stages together.
-pub use post_chain::PostProcessingChain;
+pub use post_chain::{PostProcessingChain, PostQualityMode};
 /// Space algorithms and mode selection used by the post chain.
 pub use space::{FactoryEcho, FactoryReverb, SpaceMode, SpringReverb};
 /// WDF ladder-style tone filter used at the start of the chain.

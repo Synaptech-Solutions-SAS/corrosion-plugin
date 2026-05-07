@@ -103,7 +103,7 @@ impl HeavyGrinding {
     fn generate_noise(&mut self) -> f32 {
         // Brownian noise approximation (accumulated random steps)
         self.rng_phase += 0.1;
-        let step = (self.rng_phase.sin() * 43758.5453).fract() * 2.0 - 1.0;
+        let step = (self.rng_phase.sin() * 43_758.547).fract() * 2.0 - 1.0;
         self.noise_state += step * 0.1;
         self.noise_state *= 0.99; // Leak
         self.noise_state.clamp(-1.0, 1.0)

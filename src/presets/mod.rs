@@ -259,11 +259,7 @@ impl PresetParameters {
     }
 
     fn apply_to(self, params: &mut CorrosionParams) {
-        params.ui_scale = IntParam::new(
-            "UI Scale",
-            self.ui_scale,
-            IntRange::Linear { min: 0, max: 4 },
-        );
+        params.ui_scale = int_param("UI Scale", self.ui_scale, 0, 4);
         params.env_attack = float_param("Attack", self.env_attack, 0.001, 2.0);
         params.env_decay = float_param("Decay", self.env_decay, 0.01, 5.0);
         params.env_sustain = float_param("Sustain", self.env_sustain, 0.0, 1.0);
@@ -276,21 +272,9 @@ impl PresetParameters {
         params.mseg_release = float_param("MSEG Release", self.mseg_release, 0.01, 5.0);
         params.env_amount = float_param("Env Amount", self.env_amount, 0.0, 1.0);
         params.velocity_to_peak = float_param("Velocity To Peak", self.velocity_to_peak, 0.0, 1.0);
-        params.loop_mode = IntParam::new(
-            "Loop Mode",
-            self.loop_mode,
-            IntRange::Linear { min: 0, max: 2 },
-        );
-        params.loop_start_stage = IntParam::new(
-            "Loop Start Stage",
-            self.loop_start_stage,
-            IntRange::Linear { min: 0, max: 5 },
-        );
-        params.loop_end_stage = IntParam::new(
-            "Loop End Stage",
-            self.loop_end_stage,
-            IntRange::Linear { min: 0, max: 5 },
-        );
+        params.loop_mode = int_param("Loop Mode", self.loop_mode, 0, 2);
+        params.loop_start_stage = int_param("Loop Start Stage", self.loop_start_stage, 0, 5);
+        params.loop_end_stage = int_param("Loop End Stage", self.loop_end_stage, 0, 5);
         params.sync_rate = float_param("Sync Rate", self.sync_rate, 0.0, 1.0);
         params.global_time_scale =
             float_param("Global Time Scale", self.global_time_scale, 0.1, 10.0);
@@ -393,15 +377,8 @@ impl PresetParameters {
         params.thickness = float_param("Thickness", self.thickness, 0.0, 1.0);
         params.heat = float_param("Heat", self.heat, 0.0, 1.0);
         params.sludge = float_param("Sludge", self.sludge, 0.0, 1.0);
-        params.filter_cutoff = FloatParam::new(
-            "Filter Cutoff",
-            self.filter_cutoff,
-            FloatRange::Skewed {
-                min: 20.0,
-                max: 20000.0,
-                factor: 0.5,
-            },
-        );
+        params.filter_cutoff =
+            skewed_float_param("Filter Cutoff", self.filter_cutoff, 20.0, 20000.0, 0.5);
         params.filter_resonance = float_param("Filter Resonance", self.filter_resonance, 0.0, 1.0);
         params.component_tolerance =
             float_param("Component Tolerance", self.component_tolerance, 0.0, 1.0);
@@ -413,11 +390,7 @@ impl PresetParameters {
             float_param("Listener Proximity", self.listener_proximity, 0.0, 1.0);
         params.chassis_material = float_param("Chassis Material", self.chassis_material, 0.0, 1.0);
         params.chassis_volume = float_param("Chassis Volume", self.chassis_volume, 0.0, 1.0);
-        params.space_mode = IntParam::new(
-            "Space Mode",
-            self.space_mode,
-            IntRange::Linear { min: 0, max: 3 },
-        );
+        params.space_mode = int_param("Space Mode", self.space_mode, 0, 3);
         params.space_amount = float_param("Space Amount", self.space_amount, 0.0, 1.0);
         params.factory_size = float_param("Factory Size", self.factory_size, 0.0, 1.0);
         params.machinery_clutter =
@@ -441,9 +414,27 @@ impl PresetParameters {
 }
 
 fn float_param(name: &'static str, value: f32, min: f32, max: f32) -> FloatParam {
-    FloatParam::new(name, value, FloatRange::Linear { min, max })
+    FloatParam::new(name, value.clamp(min, max), FloatRange::Linear { min, max })
         .with_value_to_string(std::sync::Arc::new(|value| format!("{value:.6}")))
         .with_string_to_value(std::sync::Arc::new(|string| string.trim().parse().ok()))
+}
+
+fn int_param(name: &'static str, value: i32, min: i32, max: i32) -> IntParam {
+    IntParam::new(name, value.clamp(min, max), IntRange::Linear { min, max })
+}
+
+fn skewed_float_param(
+    name: &'static str,
+    value: f32,
+    min: f32,
+    max: f32,
+    factor: f32,
+) -> FloatParam {
+    FloatParam::new(
+        name,
+        value.clamp(min, max),
+        FloatRange::Skewed { min, max, factor },
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -459,8 +450,14 @@ pub struct Preset {
     pub output: f32,
     pub width: f32,
     pub body: f32,
+    #[serde(default = "default_quality_mode")]
+    pub quality_mode: i32,
     #[serde(default)]
     pub extra: PresetParameters,
+}
+
+fn default_quality_mode() -> i32 {
+    1
 }
 
 impl Preset {
@@ -477,6 +474,7 @@ impl Preset {
             output: params.output.value(),
             width: params.width.value(),
             body: params.body.value(),
+            quality_mode: params.quality_mode.value(),
             extra: PresetParameters::from_params(params),
         }
     }
@@ -485,53 +483,14 @@ impl Preset {
         let mut params = CorrosionParams::default();
         params.object = object_param(self.object.to_int());
         params.exciter = crate::params::exciter_param(self.exciter);
-        params.size = nih_plug::prelude::FloatParam::new(
-            "Size",
-            self.size,
-            nih_plug::prelude::FloatRange::Linear {
-                min: 0.05,
-                max: 10.0,
-            },
-        );
-        params.rust = nih_plug::prelude::FloatParam::new(
-            "Rust",
-            self.rust,
-            nih_plug::prelude::FloatRange::Linear { min: 0.0, max: 5.0 },
-        );
-        params.damage = nih_plug::prelude::FloatParam::new(
-            "Damage",
-            self.damage,
-            nih_plug::prelude::FloatRange::Linear {
-                min: 0.0,
-                max: 10.0,
-            },
-        );
-        params.drive = nih_plug::prelude::FloatParam::new(
-            "Drive",
-            self.drive,
-            nih_plug::prelude::FloatRange::Linear { min: 0.0, max: 5.0 },
-        );
-        params.output = nih_plug::prelude::FloatParam::new(
-            "Output",
-            self.output,
-            nih_plug::prelude::FloatRange::Linear {
-                min: 0.0,
-                max: util::db_to_gain(40.0),
-            },
-        );
-        params.width = nih_plug::prelude::FloatParam::new(
-            "Width",
-            self.width,
-            nih_plug::prelude::FloatRange::Linear {
-                min: -2.0,
-                max: 3.0,
-            },
-        );
-        params.body = nih_plug::prelude::FloatParam::new(
-            "Body",
-            self.body,
-            nih_plug::prelude::FloatRange::Linear { min: 0.0, max: 5.0 },
-        );
+        params.size = float_param("Size", self.size, 0.05, 10.0);
+        params.rust = float_param("Rust", self.rust, 0.0, 5.0);
+        params.damage = float_param("Damage", self.damage, 0.0, 10.0);
+        params.drive = float_param("Drive", self.drive, 0.0, 5.0);
+        params.output = float_param("Output", self.output, 0.0, util::db_to_gain(40.0));
+        params.width = float_param("Width", self.width, -2.0, 3.0);
+        params.body = float_param("Body", self.body, 0.0, 5.0);
+        params.quality_mode = crate::params::quality_mode_param(self.quality_mode);
         self.extra.apply_to(&mut params);
         params
     }
@@ -546,6 +505,16 @@ impl Preset {
 
     pub fn load(path: impl AsRef<Path>) -> io::Result<Self> {
         let json = fs::read_to_string(path)?;
-        serde_json::from_str(&json).map_err(io::Error::other)
+        let preset: Self = serde_json::from_str(&json).map_err(io::Error::other)?;
+        Ok(preset.sanitized())
+    }
+
+    fn sanitized(self) -> Self {
+        let params = self.clone().into_params();
+        let mut sanitized = Self::from_params(self.name, &params);
+        sanitized.version = self.version;
+        sanitized.object = self.object;
+        sanitized.exciter = params.exciter.value();
+        sanitized
     }
 }

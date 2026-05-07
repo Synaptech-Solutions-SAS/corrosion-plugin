@@ -1,0 +1,61 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  quality-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Always fetch the repository exactly as CI will validate it.
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Install the native toolchain pieces needed by the gnu GUI build.
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config libx11-dev
+
+      # Keep the Rust toolchain explicit and reproducible in CI.
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl, x86_64-unknown-linux-gnu
+
+      # Cache Cargo artifacts to keep verification fast enough for iteration.
+      - name: Cache Cargo registry and target dir
+        uses: Swatinem/rust-cache@v2
+
+      # Enforce formatting as a required gate.
+      - name: Check formatting
+        run: cargo fmt --check
+
+      # Lint the realtime-focused no-GUI lane first because it matches the repo default workflow.
+      - name: Clippy (workspace, no default features)
+        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+
+      # Exercise the default no-GUI workspace exactly as documented for local verification.
+      - name: Test workspace (no default features)
+        run: cargo test --workspace --no-default-features
+
+      # Exercise the native Linux GUI-capable library lane that the bundle flow depends on.
+      - name: Test native Linux library lane
+        run: cargo test --lib --target x86_64-unknown-linux-gnu
+
+      # Smoke-test the restored offline renderer CLI with a deterministic family suite render.
+      - name: Smoke test offline renderer CLI
+        run: cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite family --out-dir /tmp/corrotion-ci-render
+
+      # Validate one rendered artifact for finite/bounded WAV output.
+      - name: Validate rendered WAV artifact
+        run: python3 scripts/check_wav.py /tmp/corrotion-ci-render/pipe_comparison.wav
+
+      # Ensure the shipping Linux bundle script still works end to end.
+      - name: Build Linux bundles
+        run: ./bundle.sh release

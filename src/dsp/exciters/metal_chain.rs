@@ -162,8 +162,8 @@ impl MetalChain {
     }
 
     fn generate_noise(&mut self) -> f32 {
-        self.rng_phase += 1.61803398875;
-        let noise = (self.rng_phase.sin() * 43758.5453).fract();
+        self.rng_phase += 1.618_034;
+        let noise = (self.rng_phase.sin() * 43_758.547).fract();
         noise * 2.0 - 1.0
     }
 
@@ -181,7 +181,7 @@ impl MetalChain {
 
     fn pseudo_random(&mut self, seed: u32) -> f32 {
         let phase = self.rng_phase + seed as f32 * 0.12345;
-        let hash = (phase.sin() * 43758.5453).fract();
+        let hash = (phase.sin() * 43_758.547).fract();
         hash.abs()
     }
 }

@@ -26,7 +26,7 @@ pub use interaction::{
 };
 pub use post_processing::{
     FactoryReverb, FemBodyResonator, HrtfSpread, LorenzDrive, OversampledClipper,
-    PostProcessingChain, SpaceMode, SpringReverb, WdfLadderFilter,
+    PostProcessingChain, PostQualityMode, SpaceMode, SpringReverb, WdfLadderFilter,
 };
 pub use profile::{ModalModeSpec, ModalProfile, ModalProfileId};
 pub use resonators::{

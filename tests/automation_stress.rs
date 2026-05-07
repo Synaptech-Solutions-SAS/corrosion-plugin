@@ -1,5 +1,6 @@
 use corrotion::dsp::ModalProfileId;
 use corrotion::voice::{VoiceManager, MAX_VOICES};
+use corrotion::Object;
 
 #[test]
 fn rapid_width_and_body_changes_stay_finite() {
@@ -42,4 +43,41 @@ fn body_parameter_does_not_create_dc_offset() {
         mean.abs() < 0.01,
         "DC offset should be negligible, got {mean}"
     );
+}
+
+#[test]
+fn exciter_and_object_matrix_stays_finite() {
+    let sample_rate = 48_000u32;
+
+    for exciter in 1..=16 {
+        for object in 0..=8 {
+            let profile = match Object::from_int(object) {
+                Object::Pipe => ModalProfileId::Pipe,
+                Object::Plate => ModalProfileId::Plate,
+                Object::Tank => ModalProfileId::Tank,
+                Object::Chain => ModalProfileId::Chain,
+                Object::IBeam => ModalProfileId::IBeam,
+                Object::TautCable => ModalProfileId::TautCable,
+                Object::CoilSpring => ModalProfileId::CoilSpring,
+                Object::SheetMetal => ModalProfileId::SheetMetal,
+                Object::IndustrialCog => ModalProfileId::IndustrialCog,
+            };
+
+            let mut manager = VoiceManager::new();
+            manager.note_on(60, 110.0, profile, 1.0, 0.25, 0.25, exciter);
+
+            for frame in 0..2_048 {
+                let width = ((frame as f32) * 0.01).sin();
+                let (left, right) = manager.process_sample_stereo(sample_rate, width);
+                assert!(
+                    left.is_finite(),
+                    "non-finite left for exciter={exciter} object={object}"
+                );
+                assert!(
+                    right.is_finite(),
+                    "non-finite right for exciter={exciter} object={object}"
+                );
+            }
+        }
+    }
 }

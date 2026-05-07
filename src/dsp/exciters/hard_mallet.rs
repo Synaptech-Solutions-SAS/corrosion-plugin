@@ -84,7 +84,7 @@ impl HardMallet {
             self.active = false;
         }
 
-        total_force.min(100.0).max(0.0)
+        total_force.clamp(0.0, 100.0)
     }
 
     /// Returns whether the mallet is still active.

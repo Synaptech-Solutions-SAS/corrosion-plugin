@@ -20,7 +20,7 @@ pub struct WireBrush {
     time_ms: f32,
     sample_rate: f32,
     total_impulses: u32,
-    generated_count: u32,
+    next_impulse_index: usize,
     rng_phase: f32,
     filter_input: f32,
     filter_output: f32,
@@ -46,7 +46,7 @@ impl WireBrush {
             time_ms: 0.0,
             sample_rate: 48000.0,
             total_impulses: 50,
-            generated_count: 0,
+            next_impulse_index: 0,
             rng_phase: 0.0,
             filter_input: 0.0,
             filter_output: 0.0,
@@ -77,8 +77,8 @@ impl WireBrush {
     pub fn trigger(&mut self, velocity: f32) {
         self.active = true;
         self.time_ms = 0.0;
-        self.generated_count = 0;
         self.impulses.clear();
+        self.next_impulse_index = 0;
         self.rng_phase = velocity * 100.0;
 
         // Pre-generate Poisson-distributed impulses
@@ -124,14 +124,18 @@ impl WireBrush {
         let dt_ms = 1000.0 / self.sample_rate;
         self.time_ms += dt_ms;
 
-        // Find impulses that should trigger this sample
+        // Trigger only the not-yet-fired prefix of the pre-sorted impulse list.
+        // The impulses are generated in monotonically increasing time order,
+        // so a cursor avoids rescanning the whole list every sample.
         let mut output = 0.0;
-        for impulse in &mut self.impulses {
-            if !impulse.triggered && impulse.time_ms <= self.time_ms {
-                impulse.triggered = true;
-                output += impulse.amplitude;
-                self.generated_count += 1;
+        while let Some(impulse) = self.impulses.get_mut(self.next_impulse_index) {
+            if impulse.time_ms > self.time_ms {
+                break;
             }
+
+            impulse.triggered = true;
+            output += impulse.amplitude;
+            self.next_impulse_index += 1;
         }
 
         // Apply high-pass filter based on wire_stiffness
@@ -147,8 +151,7 @@ impl WireBrush {
         output = filtered.max(0.0);
 
         // Deactivate when all impulses triggered and duration elapsed
-        if self.time_ms > self.spread_duration_ms
-            && self.generated_count >= self.impulses.len() as u32
+        if self.time_ms > self.spread_duration_ms && self.next_impulse_index >= self.impulses.len()
         {
             self.active = false;
         }
@@ -163,8 +166,8 @@ impl WireBrush {
 
     /// Simple deterministic pseudo-random for reproducibility
     fn pseudo_random(&mut self, seed: u32) -> f32 {
-        self.rng_phase += 1.61803398875 + seed as f32 * 0.1;
-        let hash = (self.rng_phase.sin() * 43758.5453).fract();
+        self.rng_phase += 1.618_034 + seed as f32 * 0.1;
+        let hash = (self.rng_phase.sin() * 43_758.547).fract();
         hash.abs()
     }
 }
@@ -172,5 +175,28 @@ impl WireBrush {
 impl Default for WireBrush {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WireBrush;
+
+    #[test]
+    fn dense_cluster_stays_finite_and_finishes() {
+        let mut brush = WireBrush::new();
+        brush.set_sample_rate(48_000.0);
+        brush.set_parameters(512, 150.0, 0.9, 0.8);
+        brush.trigger(0.95);
+
+        let mut saw_non_zero = false;
+        for _ in 0..16_384 {
+            let sample = brush.process_sample(0.0, 0.0);
+            assert!(sample.is_finite());
+            saw_non_zero |= sample.abs() > 0.0;
+        }
+
+        assert!(saw_non_zero, "wire brush should emit impulse energy");
+        assert!(!brush.is_active(), "wire brush should eventually settle");
     }
 }

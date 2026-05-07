@@ -41,8 +41,11 @@ impl ResonatorAlgorithm for IndustrialCogResonator {
         let scale = fundamental_hz / (size_scale.factor() * (0.5 + self.blade_radius));
         let mut modes = Vec::with_capacity(mode_count * 2);
 
-        for i in 0..mode_count.min(6) {
-            let root = Self::BESSEL_ROOTS[i];
+        for (i, &root) in Self::BESSEL_ROOTS
+            .iter()
+            .take(mode_count.min(6))
+            .enumerate()
+        {
             let base_freq = scale * root * root * 0.01;
             let epsilon = self.tooth_dissonance * 0.03 * ((i + 1) as f32);
 

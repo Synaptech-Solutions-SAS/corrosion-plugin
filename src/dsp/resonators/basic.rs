@@ -249,7 +249,7 @@ impl ChainResonator {
     fn goe_frequency(&self, index: usize, _total: usize) -> f32 {
         let n = index as f32;
         // Chaotic distribution using random-like but deterministic sequence
-        let chaos = (n * 1.618033988749895).fract(); // Golden ratio conjugate
+        let chaos = (n * 1.618_034).fract(); // Golden ratio conjugate
         let base = 100.0 / self.link_mass;
         base * (1.0 + n * 0.15 + chaos * self.instability)
     }

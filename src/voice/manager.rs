@@ -16,6 +16,19 @@ pub struct VoiceManager {
     frame_counter: u64,
 }
 
+/// Map a voice peak-hold value to a steal priority score.
+///
+/// Non-finite values are treated as the quietest possible voices so a
+/// corrupted or unstable voice is preferentially reclaimed instead of
+/// panicking during comparison.
+fn comparable_peak_hold(peak_hold: f32) -> f32 {
+    if peak_hold.is_finite() {
+        peak_hold
+    } else {
+        f32::NEG_INFINITY
+    }
+}
+
 impl VoiceManager {
     /// Create a voice manager with all slots initialized.
     ///
@@ -52,6 +65,8 @@ impl VoiceManager {
     /// * `rust` - Material rust parameter forwarded to the voice.
     /// * `damage` - Material damage parameter forwarded to the voice.
     /// * `exciter_type` - Integer selector for the exciter model.
+    // Kept positional to match the voice API and avoid a call-site refactor.
+    #[allow(clippy::too_many_arguments)]
     pub fn note_on(
         &mut self,
         note: u8,
@@ -86,6 +101,8 @@ impl VoiceManager {
     /// * `damage` - Material damage parameter forwarded to the voice.
     /// * `exciter_type` - Integer selector for the exciter model.
     /// * `controls` - Complete per-voice control snapshot.
+    // Mirrors the per-note host control snapshot; changing shape is out of scope here.
+    #[allow(clippy::too_many_arguments)]
     pub fn note_on_with_controls(
         &mut self,
         note: u8,
@@ -99,7 +116,7 @@ impl VoiceManager {
     ) {
         // First try: find an inactive voice; this keeps the common case
         // deterministic and avoids unnecessary stealing.
-        if let Some(idx) = self.voices.iter().position(|v| !v.is_active()) {
+        if let Some(idx) = self.voices.iter().position(|v| !v.is_rendering()) {
             self.voices[idx].note_on_with_controls(
                 note,
                 velocity,
@@ -122,7 +139,9 @@ impl VoiceManager {
             .iter()
             .enumerate()
             .min_by(|(_, a), (_, b)| {
-                let peak_cmp = a.peak_hold().partial_cmp(&b.peak_hold()).unwrap();
+                let peak_cmp = comparable_peak_hold(a.peak_hold())
+                    .partial_cmp(&comparable_peak_hold(b.peak_hold()))
+                    .unwrap_or(std::cmp::Ordering::Equal);
                 if peak_cmp != std::cmp::Ordering::Equal {
                     return peak_cmp;
                 }
@@ -174,7 +193,9 @@ impl VoiceManager {
         self.frame_counter += 1;
         let mut sum = 0.0f32;
         for voice in &mut self.voices {
-            sum += voice.process_sample(sample_rate);
+            if voice.is_rendering() {
+                sum += voice.process_sample(sample_rate);
+            }
         }
         sum
     }
@@ -196,9 +217,11 @@ impl VoiceManager {
         let mut left_sum = 0.0f32;
         let mut right_sum = 0.0f32;
         for voice in &mut self.voices {
-            let (left, right) = voice.process_sample_stereo(sample_rate, width);
-            left_sum += left;
-            right_sum += right;
+            if voice.is_rendering() {
+                let (left, right) = voice.process_sample_stereo(sample_rate, width);
+                left_sum += left;
+                right_sum += right;
+            }
         }
         (left_sum, right_sum)
     }
@@ -212,7 +235,7 @@ impl Default for VoiceManager {
 
 #[cfg(test)]
 mod tests {
-    use super::{VoiceManager, MAX_VOICES};
+    use super::{comparable_peak_hold, VoiceManager, MAX_VOICES};
     use crate::voice::Voice;
 
     #[test]
@@ -336,6 +359,73 @@ mod tests {
     }
 
     #[test]
+    fn note_off_tail_still_renders_after_slot_becomes_inactive() {
+        let mut manager = VoiceManager::new();
+        manager.note_on(
+            60,
+            100.0,
+            crate::dsp::ModalProfileId::Pipe,
+            1.0,
+            0.0,
+            0.0,
+            2,
+        );
+        let sample_rate = 48_000u32;
+
+        for _ in 0..256 {
+            manager.process_sample(sample_rate);
+        }
+
+        manager.note_off(60);
+        assert_eq!(manager.voices.iter().filter(|v| v.is_active()).count(), 0);
+
+        let tail_energy: f32 = (0..4096)
+            .map(|_| manager.process_sample(sample_rate).abs())
+            .sum();
+        assert!(tail_energy > 0.01, "note-off tail should still render");
+    }
+
+    #[test]
+    fn new_note_uses_unused_slot_before_released_tail() {
+        let mut manager = VoiceManager::new();
+        manager.note_on(
+            60,
+            100.0,
+            crate::dsp::ModalProfileId::Pipe,
+            1.0,
+            0.0,
+            0.0,
+            2,
+        );
+
+        let sample_rate = 48_000u32;
+        for _ in 0..256 {
+            manager.process_sample(sample_rate);
+        }
+
+        manager.note_off(60);
+        manager.note_on(
+            67,
+            100.0,
+            crate::dsp::ModalProfileId::Pipe,
+            1.0,
+            0.0,
+            0.0,
+            2,
+        );
+
+        let rendering_notes: Vec<u8> = manager
+            .voices
+            .iter()
+            .filter(|voice| voice.is_rendering())
+            .map(|voice| voice.note())
+            .collect();
+
+        assert!(rendering_notes.contains(&60));
+        assert!(rendering_notes.contains(&67));
+    }
+
+    #[test]
     fn steals_quietest_voice_when_all_active() {
         let mut manager = VoiceManager::new();
         // Fill all 8 slots
@@ -400,5 +490,13 @@ mod tests {
             !stolen.is_empty(),
             "at least one original voice should have been stolen"
         );
+    }
+
+    #[test]
+    fn non_finite_peak_hold_is_preferred_for_stealing() {
+        let finite_peak = 0.25_f32;
+        let non_finite_peak = f32::NAN;
+
+        assert!(comparable_peak_hold(non_finite_peak) < comparable_peak_hold(finite_peak));
     }
 }

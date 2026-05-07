@@ -58,10 +58,10 @@ The current object set contains 9 modal profiles:
 ## Build And Run
 
 ```bash
-# Test
+# Test using the repo's default local target from .cargo/config.toml
 cargo test --workspace --no-default-features
 
-# Build Linux
+# Build the Linux bundle target used by bundle.sh
 cargo build --target x86_64-unknown-linux-gnu
 
 # Bundle Linux plugins
@@ -75,24 +75,48 @@ cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite all
 
 # Render all presets to WAV + manifest
 cargo run --target x86_64-unknown-linux-gnu --bin render_presets
+
+# Run the benchmark harness on the supported native no-GUI lane
+cargo bench --no-default-features --target x86_64-unknown-linux-gnu --bench performance
 ```
+
+The repository defaults to `x86_64-unknown-linux-musl` for unqualified local cargo commands through `.cargo/config.toml`. The bundle scripts and the documented plugin packaging flow use the explicit `x86_64-unknown-linux-gnu` target shown above.
 
 ## Validation
 
 If you have the tools installed, the local validation flow is:
 
 ```bash
+# Full local verification lane that mirrors CI
+./scripts/verify-local.sh
+
+# Or run the major steps manually
+cargo fmt --check
+cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+cargo test --workspace --no-default-features
+cargo test --lib --target x86_64-unknown-linux-gnu
+cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite family --out-dir /tmp/corrotion-verify-render
+python3 scripts/check_wav.py /tmp/corrotion-verify-render/pipe_comparison.wav
+./bundle.sh release
+
+# Optional host/plugin validators when installed locally
+./scripts/validate-plugins.sh
+
 pluginval --strictness-level 5 --validate target/bundled/Corrosion.vst3 --skip-gui-tests
 clap-validator validate target/bundled/Corrosion.clap/Corrosion.clap --only-failed
 ```
+
+The repository CI currently automates the formatter, clippy, the no-default-features workspace tests, the native Linux library lane, the offline renderer smoke test, WAV validation, and the Linux bundle script. DAW smoke scripts under `tests/daw/` and external plugin validators remain optional/manual because they depend on tools that are not guaranteed to exist in every environment.
+
+Benchmark coverage is local/manual for now. Use `cargo bench --no-default-features --target x86_64-unknown-linux-gnu --bench performance` to measure the current hot-path baseline for voice rendering, stochastic excitation, post-processing, and offline rendering.
 
 ## Docs
 
 Active design and implementation references:
 
-- `docs/full-feature-surface.md`
-- `docs/sound-direction-brief.md`
-- `docs/interface-design-specification.md`
+- `docs/master-prompt.md`
+- `docs/corrosion_plugin_prd_and_specs.md`
 - `docs/new-detailed-specs/`
+- `docs/production-hardening-log.md`
 
 Legacy roadmap/evidence notes still live under `.sisyphus/`, but the docs above are the current reference for the shipped surface.

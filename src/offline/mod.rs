@@ -2,7 +2,10 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::dsp::{DamageAmount, ModalProfileId, ModalResonator, RustAmount, SizeScale};
+use crate::dsp::{
+    DamageAmount, ModalProfileId, ModalResonator, PostProcessingChain, PostQualityMode, RustAmount,
+    SizeScale, SpaceMode,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub struct RenderConfig {
@@ -70,8 +73,58 @@ pub struct RenderBehaviorMetrics {
     pub roughness_proxy: f32,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct AliasingReport {
+    pub sample_rate: u32,
+    pub frame_count: usize,
+    pub input_frequency_hz: f32,
+    pub harmonic_bins: Vec<usize>,
+    pub harmonic_energy: f32,
+    pub alias_energy: f32,
+    pub dc_energy: f32,
+    pub alias_ratio_db: f32,
+    pub strongest_alias_frequency_hz: f32,
+    pub strongest_alias_energy: f32,
+}
+
+impl AliasingReport {
+    pub fn to_report(&self) -> String {
+        let harmonic_bins = self
+            .harmonic_bins
+            .iter()
+            .map(|bin| bin.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        format!(
+            concat!(
+                "sample_rate={}\n",
+                "frame_count={}\n",
+                "input_frequency_hz={:.6}\n",
+                "harmonic_bins=[{}]\n",
+                "harmonic_energy={:.9}\n",
+                "alias_energy={:.9}\n",
+                "dc_energy={:.9}\n",
+                "alias_ratio_db={:.9}\n",
+                "strongest_alias_frequency_hz={:.6}\n",
+                "strongest_alias_energy={:.9}\n"
+            ),
+            self.sample_rate,
+            self.frame_count,
+            self.input_frequency_hz,
+            harmonic_bins,
+            self.harmonic_energy,
+            self.alias_energy,
+            self.dc_energy,
+            self.alias_ratio_db,
+            self.strongest_alias_frequency_hz,
+            self.strongest_alias_energy,
+        )
+    }
+}
+
 impl RenderBehaviorMetrics {
-    fn to_report(&self) -> String {
+    fn to_report(self) -> String {
         format!(
             concat!(
                 "zero_crossings={}\n",
@@ -371,6 +424,104 @@ fn path_display_string(path: &Path) -> String {
     path.display().to_string()
 }
 
+fn dft_magnitude_squared(samples: &[f32], bin: usize) -> f32 {
+    let sample_count = samples.len() as f32;
+    let angular_step = 2.0 * std::f32::consts::PI * bin as f32 / sample_count.max(1.0);
+    let mut real = 0.0f32;
+    let mut imag = 0.0f32;
+
+    for (index, sample) in samples.iter().enumerate() {
+        let phase = angular_step * index as f32;
+        real += *sample * phase.cos();
+        imag -= *sample * phase.sin();
+    }
+
+    real * real + imag * imag
+}
+
+pub fn analyze_post_chain_aliasing(sample_rate: u32, frame_count: usize) -> AliasingReport {
+    let sample_rate = sample_rate.max(1);
+    let frame_count = frame_count.max(256);
+    let nyquist_bin = frame_count / 2;
+    let input_bin = (frame_count * 3 / 16).clamp(1, nyquist_bin.saturating_sub(1));
+    let input_frequency_hz = input_bin as f32 * sample_rate as f32 / frame_count as f32;
+
+    let mut chain = PostProcessingChain::new();
+    chain.set_sample_rate(sample_rate as f32);
+    chain.set_quality_mode(PostQualityMode::Render);
+    chain.set_filter_params(20_000.0, 0.0, 0.0);
+    chain.set_drive_params(2.5, 0.35, 0.2);
+    chain.set_body_params(0.0, 0.0);
+    chain.set_spread_params(0.0, 0.0);
+    chain.set_space_mode(SpaceMode::Off);
+    chain.set_space_amount(0.0);
+    chain.set_clipper_params(0.9661, 0.5);
+
+    let warmup_frames = frame_count / 2;
+    for frame in 0..warmup_frames {
+        let phase =
+            2.0 * std::f32::consts::PI * input_frequency_hz * frame as f32 / sample_rate as f32;
+        let input = phase.sin() * 0.85;
+        let _ = chain.process(input, input);
+    }
+
+    let mut output = Vec::with_capacity(frame_count);
+    for frame in 0..frame_count {
+        let phase =
+            2.0 * std::f32::consts::PI * input_frequency_hz * frame as f32 / sample_rate as f32;
+        let input = phase.sin() * 0.85;
+        let (left, right) = chain.process(input, input);
+        output.push((left + right) * 0.5);
+    }
+
+    let harmonic_bins = (1..)
+        .map(|harmonic| input_bin * harmonic)
+        .take_while(|bin| *bin <= nyquist_bin)
+        .collect::<Vec<_>>();
+
+    let dc_energy = dft_magnitude_squared(&output, 0);
+    let harmonic_energy = harmonic_bins
+        .iter()
+        .map(|bin| dft_magnitude_squared(&output, *bin))
+        .sum::<f32>();
+
+    let mut alias_energy = 0.0f32;
+    let mut strongest_alias_bin = 1usize;
+    let mut strongest_alias_energy = 0.0f32;
+    for bin in 1..=nyquist_bin {
+        if harmonic_bins.contains(&bin) {
+            continue;
+        }
+
+        let energy = dft_magnitude_squared(&output, bin);
+        alias_energy += energy;
+        if energy > strongest_alias_energy {
+            strongest_alias_energy = energy;
+            strongest_alias_bin = bin;
+        }
+    }
+
+    let strongest_alias_frequency_hz =
+        strongest_alias_bin as f32 * sample_rate as f32 / frame_count as f32;
+    let alias_ratio_db = 10.0
+        * (alias_energy / harmonic_energy.max(f32::EPSILON))
+            .max(f32::EPSILON)
+            .log10();
+
+    AliasingReport {
+        sample_rate,
+        frame_count,
+        input_frequency_hz,
+        harmonic_bins,
+        harmonic_energy,
+        alias_energy,
+        dc_energy,
+        alias_ratio_db,
+        strongest_alias_frequency_hz,
+        strongest_alias_energy,
+    }
+}
+
 pub struct OfflineRenderer {
     config: RenderConfig,
 }
@@ -632,5 +783,24 @@ impl OfflineRenderer {
         fs::write(output_dir.join("damage_variation_manifest.txt"), manifest)?;
 
         Ok(artifacts)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::analyze_post_chain_aliasing;
+
+    #[test]
+    fn aliasing_report_is_finite_and_populated() {
+        let report = analyze_post_chain_aliasing(48_000, 2_048);
+
+        assert!(report.input_frequency_hz.is_finite());
+        assert!(!report.harmonic_bins.is_empty());
+        assert!(report.harmonic_energy.is_finite());
+        assert!(report.alias_energy.is_finite());
+        assert!(report.dc_energy.is_finite());
+        assert!(report.alias_ratio_db.is_finite());
+        assert!(report.strongest_alias_frequency_hz > 0.0);
+        assert!(report.strongest_alias_energy.is_finite());
     }
 }

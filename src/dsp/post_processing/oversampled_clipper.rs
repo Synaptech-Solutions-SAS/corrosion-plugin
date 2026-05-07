@@ -2,10 +2,11 @@
 //!
 //! This stage approximates a true-peak limiter using 16x oversampling and a
 //! soft diode-style transfer curve.
-/// Final soft clipper with 16x oversampled processing.
+/// Final soft clipper with configurable oversampled processing.
 pub struct OversampledClipper {
     ceiling: f32,
     softness: f32,
+    oversample_factor: usize,
 
     // Polyphase interpolation/decimation state
     upsample_state: [f32; 16],
@@ -15,11 +16,12 @@ pub struct OversampledClipper {
 }
 
 impl OversampledClipper {
-    /// Creates the clipper with a conservative ceiling.
+    /// Creates the clipper with a conservative ceiling and 16x oversampling.
     pub fn new() -> Self {
         Self {
             ceiling: 0.9661,
             softness: 0.5,
+            oversample_factor: 16,
             upsample_state: [0.0; 16],
             downsample_state: [0.0; 16],
             sample_rate: 48000.0,
@@ -32,6 +34,11 @@ impl OversampledClipper {
         self.softness = softness.clamp(0.0, 1.0);
     }
 
+    /// Sets the oversampling factor (1, 4, 8, or 16).
+    pub fn set_oversample_factor(&mut self, factor: usize) {
+        self.oversample_factor = factor.clamp(1, 16);
+    }
+
     /// Updates the internal rate used for reporting and future expansion.
     pub fn set_sample_rate(&mut self, sample_rate: f32) {
         self.sample_rate = sample_rate;
@@ -39,19 +46,19 @@ impl OversampledClipper {
 
     /// Processes one mono sample through the oversampled limiter.
     pub fn process(&mut self, input: f32) -> f32 {
-        // 16x oversampling stage for true-peak style clipping.
-        let os_factor = 16;
+        let os_factor = self.oversample_factor;
+        if os_factor <= 1 {
+            return self.diode_clip(input);
+        }
 
         // Upsample (zero-stuffing with simple hold)
         let mut os_samples = [0.0f32; 16];
-        for i in 0..os_factor {
-            os_samples[i] = input;
-        }
+        os_samples.fill(input);
 
         // Process each oversampled sample
         let mut sum = 0.0f32;
-        for i in 0..os_factor {
-            let clipped = self.diode_clip(os_samples[i]);
+        for sample in os_samples.iter().take(os_factor) {
+            let clipped = self.diode_clip(*sample);
             sum += clipped;
         }
 

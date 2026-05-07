@@ -58,7 +58,7 @@ impl WdfLadderFilter {
     pub fn process(&mut self, input: f32) -> f32 {
         // Apply component tolerance as subtle noise/jitter
         let tolerance_jitter = if self.component_tolerance > 0.0 {
-            let noise = (self.y[0] * 43758.5453).fract() * 2.0 - 1.0;
+            let noise = (self.y[0] * 43_758.547).fract() * 2.0 - 1.0;
             noise * self.component_tolerance * 0.001
         } else {
             0.0
