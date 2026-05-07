@@ -106,8 +106,8 @@ pub const LIMITER_THRESHOLD: f32 = 0.9661;
 ///
 /// # Example
 /// ```rust
-/// let limited = corrotion::apply_output_limiter(1.5);
-/// assert_eq!(limited, corrotion::LIMITER_THRESHOLD);
+/// let limited = corrosion::apply_output_limiter(1.5);
+/// assert_eq!(limited, corrosion::LIMITER_THRESHOLD);
 /// ```
 #[inline]
 pub fn apply_output_limiter(sample: f32) -> f32 {
@@ -848,7 +848,7 @@ mod tests {
 
 /// CLAP plugin format implementation
 impl ClapPlugin for Corrosion {
-    const CLAP_ID: &'static str = "com.corrosion.corrotion";
+    const CLAP_ID: &'static str = "com.corrosion.corrosion";
     const CLAP_DESCRIPTION: Option<&'static str> = Some("Industrial physical modeling synthesizer");
     const CLAP_MANUAL_URL: Option<&'static str> = None;
     const CLAP_SUPPORT_URL: Option<&'static str> = None;

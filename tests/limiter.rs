@@ -1,4 +1,4 @@
-use corrotion::{apply_output_limiter, LIMITER_THRESHOLD};
+use corrosion::{apply_output_limiter, LIMITER_THRESHOLD};
 
 #[test]
 fn output_limiter_hard_clamps_to_threshold() {

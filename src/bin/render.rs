@@ -1,5 +1,5 @@
 use clap::{Parser, ValueEnum};
-use corrotion::offline::{analyze_post_chain_aliasing, OfflineRenderer, RenderConfig};
+use corrosion::offline::{analyze_post_chain_aliasing, OfflineRenderer, RenderConfig};
 use std::path::PathBuf;
 
 /// Offline render suite selection for deterministic regression assets.

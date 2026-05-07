@@ -1,5 +1,5 @@
-use corrotion::dsp::ModalProfileId;
-use corrotion::voice::Voice;
+use corrosion::dsp::ModalProfileId;
+use corrosion::voice::Voice;
 
 #[test]
 fn different_velocities_produce_different_roughness() {

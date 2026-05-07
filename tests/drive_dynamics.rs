@@ -1,4 +1,4 @@
-use corrotion::apply_drive;
+use corrosion::apply_drive;
 
 #[test]
 fn drive_preserves_dynamics() {

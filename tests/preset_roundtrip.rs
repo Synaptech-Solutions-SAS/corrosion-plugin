@@ -1,5 +1,5 @@
-use corrotion::presets::{Preset, PresetParameters, PRESET_VERSION};
-use corrotion::Object;
+use corrosion::presets::{Preset, PresetParameters, PRESET_VERSION};
+use corrosion::Object;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 

@@ -1,4 +1,4 @@
-use corrotion::dsp::{ModalProfileId, ModalResonator, ResonatorCore};
+use corrosion::dsp::{ModalProfileId, ModalResonator, ResonatorCore};
 
 #[test]
 fn width_zero_is_mono() {

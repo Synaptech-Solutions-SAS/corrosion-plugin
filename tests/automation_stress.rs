@@ -1,6 +1,6 @@
-use corrotion::dsp::ModalProfileId;
-use corrotion::voice::{VoiceManager, MAX_VOICES};
-use corrotion::Object;
+use corrosion::dsp::ModalProfileId;
+use corrosion::voice::{VoiceManager, MAX_VOICES};
+use corrosion::Object;
 
 #[test]
 fn rapid_width_and_body_changes_stay_finite() {

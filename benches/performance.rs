@@ -1,6 +1,6 @@
-use corrotion::dsp::{ModalProfileId, ModalResonator, PostProcessingChain, SpaceMode, WireBrush};
-use corrotion::offline::{OfflineRenderer, RenderConfig};
-use corrotion::voice::manager::VoiceManager;
+use corrosion::dsp::{ModalProfileId, ModalResonator, PostProcessingChain, SpaceMode, WireBrush};
+use corrosion::offline::{OfflineRenderer, RenderConfig};
+use corrosion::voice::manager::VoiceManager;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 /// Benchmark one active voice through the mono voice manager path.
@@ -90,7 +90,7 @@ fn bench_post_chain_eco(c: &mut Criterion) {
         b.iter(|| {
             let mut chain = PostProcessingChain::new();
             chain.set_sample_rate(48_000.0);
-            chain.set_quality_mode(corrotion::dsp::PostQualityMode::Eco);
+            chain.set_quality_mode(corrosion::dsp::PostQualityMode::Eco);
             chain.set_filter_params(8_000.0, 0.35, 0.05);
             chain.set_drive_params(1.5, 0.2, 0.15);
             chain.set_body_params(0.4, 0.6);

@@ -1,4 +1,4 @@
-use corrotion::dsp::BodyResonator;
+use corrosion::dsp::BodyResonator;
 
 #[test]
 fn body_adds_low_mid_energy() {

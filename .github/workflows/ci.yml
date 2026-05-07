@@ -50,11 +50,11 @@ jobs:
 
       # Smoke-test the restored offline renderer CLI with a deterministic family suite render.
       - name: Smoke test offline renderer CLI
-        run: cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite family --out-dir /tmp/corrotion-ci-render
+        run: cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite family --out-dir /tmp/corrosion-ci-render
 
       # Validate one rendered artifact for finite/bounded WAV output.
       - name: Validate rendered WAV artifact
-        run: python3 scripts/check_wav.py /tmp/corrotion-ci-render/pipe_comparison.wav
+        run: python3 scripts/check_wav.py /tmp/corrosion-ci-render/pipe_comparison.wav
 
       # Ensure the shipping Linux bundle script still works end to end.
       - name: Build Linux bundles

@@ -220,7 +220,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 target/
-../corrotion-target/
+../corrosion-target/
 output/*.tmp
 .sisyphus/evidence/*.tmp
 __pycache__/

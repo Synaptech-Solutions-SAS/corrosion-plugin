@@ -1,6 +1,6 @@
-use corrotion::dsp::ModalProfileId;
-use corrotion::offline::render_behavior_metrics;
-use corrotion::voice::Voice;
+use corrosion::dsp::ModalProfileId;
+use corrosion::offline::render_behavior_metrics;
+use corrosion::voice::Voice;
 
 fn render_voice(profile: ModalProfileId) -> Vec<f32> {
     let sample_rate = 48_000u32;

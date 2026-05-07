@@ -1,5 +1,5 @@
-use corrotion::dsp::ModalProfileId;
-use corrotion::voice::Voice;
+use corrosion::dsp::ModalProfileId;
+use corrosion::voice::Voice;
 
 #[test]
 fn bow_exciter_produces_sustained_output() {

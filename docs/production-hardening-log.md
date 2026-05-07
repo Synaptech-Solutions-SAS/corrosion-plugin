@@ -18,19 +18,19 @@ Bring the repository's build targets, renderer entrypoints, and top-level docume
 ### Verification
 - `cargo test --workspace --no-default-features`
 - `cargo test --lib --target x86_64-unknown-linux-gnu`
-- `cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite family --out-dir /tmp/corrotion-phase0-render`
-- `python3 scripts/check_wav.py /tmp/corrotion-phase0-render/pipe_comparison.wav`
+- `cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite family --out-dir /tmp/corrosion-phase0-render`
+- `python3 scripts/check_wav.py /tmp/corrosion-phase0-render/pipe_comparison.wav`
 
 ### Results
 - `cargo test --workspace --no-default-features` passed.
 - `cargo test --lib --target x86_64-unknown-linux-gnu` passed.
-- `cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite family --out-dir /tmp/corrotion-phase0-render` succeeded and produced:
+- `cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite family --out-dir /tmp/corrosion-phase0-render` succeeded and produced:
   - `family_comparison_manifest.txt`
   - `pipe_comparison.wav`
   - `plate_comparison.wav`
   - `tank_comparison.wav`
   - matching summary files for each render
-- `python3 scripts/check_wav.py /tmp/corrotion-phase0-render/pipe_comparison.wav` reported `peak=0.702759 rms=0.304205 nan_count=0 frames=48000 sr=48000`.
+- `python3 scripts/check_wav.py /tmp/corrosion-phase0-render/pipe_comparison.wav` reported `peak=0.702759 rms=0.304205 nan_count=0 frames=48000 sr=48000`.
 
 ### Evidence To Capture Next
 - Preserve the output manifest from the offline renderer run for later release QA comparison.
@@ -69,8 +69,8 @@ Add a realistic repository automation lane for compile, lint, test, offline-rend
 - `cargo clippy --workspace --all-targets --no-default-features -- -D warnings` passed after targeted lint cleanup.
 - `cargo test --workspace --no-default-features` passed.
 - `cargo test --lib --target x86_64-unknown-linux-gnu` passed.
-- `cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite family --out-dir /tmp/corrotion-local-verify-render` succeeded.
-- `python3 scripts/check_wav.py /tmp/corrotion-local-verify-render/pipe_comparison.wav` reported `peak=0.702759 rms=0.304205 nan_count=0 frames=48000 sr=48000`.
+- `cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite family --out-dir /tmp/corrosion-local-verify-render` succeeded.
+- `python3 scripts/check_wav.py /tmp/corrosion-local-verify-render/pipe_comparison.wav` reported `peak=0.702759 rms=0.304205 nan_count=0 frames=48000 sr=48000`.
 - `./bundle.sh release` succeeded and produced Linux VST3 and CLAP bundles under `target/bundled/`.
 
 ## Phase 3 — Benchmark Harness
@@ -241,16 +241,16 @@ Resolve the remaining user-facing control instability, eliminate wasted idle voi
 - `cargo test --lib --target x86_64-unknown-linux-gnu note_off_tail_still_renders_after_slot_becomes_inactive -- --nocapture`
 - `cargo bench --no-default-features --target x86_64-unknown-linux-gnu --bench performance -- voice_manager_idle --noplot --sample-size 10`
 - `cargo test --lib --target x86_64-unknown-linux-gnu aliasing_report_is_finite_and_populated -- --nocapture`
-- `cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite aliasing --out-dir /tmp/corrotion-aliasing-check --frame-count 2048`
+- `cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite aliasing --out-dir /tmp/corrosion-aliasing-check --frame-count 2048`
 - `cargo test --lib --target x86_64-unknown-linux-gnu factory_preset_loader_finds_factory_bank -- --nocapture`
-- `cargo run --target x86_64-unknown-linux-gnu --bin render_presets -- --contains anchored_tank_moan --limit 1 --out-dir /tmp/corrotion-preset-bank-check`
+- `cargo run --target x86_64-unknown-linux-gnu --bin render_presets -- --contains anchored_tank_moan --limit 1 --out-dir /tmp/corrosion-preset-bank-check`
 - `bash scripts/verify-local.sh`
 
 ### Results
 - Knob helper tests still pass, and the live knob path now uses anchored pointer motion instead of cumulative delta replay.
 - `voice_manager_idle` improved from millisecond-scale runtime to `~91.8 µs` for 4096 samples, a `~99.19%` improvement.
-- The aliasing CLI produced a concrete report at `/tmp/corrotion-aliasing-check/aliasing_report.txt` with `input_frequency_hz=9000`, `harmonic_bins=[384, 768]`, and `alias_ratio_db=-69.236900330`.
-- The preset bank render path successfully rendered `Anchored Tank Moan` and wrote `/tmp/corrotion-preset-bank-check/preset_render_manifest.txt`.
+- The aliasing CLI produced a concrete report at `/tmp/corrosion-aliasing-check/aliasing_report.txt` with `input_frequency_hz=9000`, `harmonic_bins=[384, 768]`, and `alias_ratio_db=-69.236900330`.
+- The preset bank render path successfully rendered `Anchored Tank Moan` and wrote `/tmp/corrosion-preset-bank-check/preset_render_manifest.txt`.
 - Full local verification passed after all four requested changes.
 
 ### Remaining Phase 7 Risks

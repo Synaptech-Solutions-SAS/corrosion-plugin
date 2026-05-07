@@ -36,7 +36,7 @@ pub use manager::{VoiceManager, MAX_VOICES};
 /// # Examples
 ///
 /// ```rust
-/// assert!((corrotion::voice::midi_to_hz(69) - 440.0).abs() < 1e-3);
+/// assert!((corrosion::voice::midi_to_hz(69) - 440.0).abs() < 1e-3);
 /// ```
 pub fn midi_to_hz(note: u8) -> f32 {
     440.0 * 2_f32.powf((note as f32 - 69.0) / 12.0)

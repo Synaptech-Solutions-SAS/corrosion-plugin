@@ -1,9 +1,9 @@
 use clap::Parser;
-use corrotion::dsp::BodyResonator;
-use corrotion::offline::{render_behavior_metrics, RenderConfig};
-use corrotion::presets::Preset;
-use corrotion::voice::VoiceManager;
-use corrotion::{apply_drive, apply_output_limiter, Object};
+use corrosion::dsp::BodyResonator;
+use corrosion::offline::{render_behavior_metrics, RenderConfig};
+use corrosion::presets::Preset;
+use corrosion::voice::VoiceManager;
+use corrosion::{apply_drive, apply_output_limiter, Object};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -108,15 +108,15 @@ fn render_preset(
     let mut voice_manager = VoiceManager::new();
     let mut body_resonator = BodyResonator::new();
     let profile = match preset.object {
-        Object::Pipe => corrotion::dsp::ModalProfileId::Pipe,
-        Object::Plate => corrotion::dsp::ModalProfileId::Plate,
-        Object::Tank => corrotion::dsp::ModalProfileId::Tank,
-        Object::Chain => corrotion::dsp::ModalProfileId::Chain,
-        Object::IBeam => corrotion::dsp::ModalProfileId::IBeam,
-        Object::TautCable => corrotion::dsp::ModalProfileId::TautCable,
-        Object::CoilSpring => corrotion::dsp::ModalProfileId::CoilSpring,
-        Object::SheetMetal => corrotion::dsp::ModalProfileId::SheetMetal,
-        Object::IndustrialCog => corrotion::dsp::ModalProfileId::IndustrialCog,
+        Object::Pipe => corrosion::dsp::ModalProfileId::Pipe,
+        Object::Plate => corrosion::dsp::ModalProfileId::Plate,
+        Object::Tank => corrosion::dsp::ModalProfileId::Tank,
+        Object::Chain => corrosion::dsp::ModalProfileId::Chain,
+        Object::IBeam => corrosion::dsp::ModalProfileId::IBeam,
+        Object::TautCable => corrosion::dsp::ModalProfileId::TautCable,
+        Object::CoilSpring => corrosion::dsp::ModalProfileId::CoilSpring,
+        Object::SheetMetal => corrosion::dsp::ModalProfileId::SheetMetal,
+        Object::IndustrialCog => corrosion::dsp::ModalProfileId::IndustrialCog,
     };
 
     voice_manager.note_on(

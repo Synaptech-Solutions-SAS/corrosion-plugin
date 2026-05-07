@@ -42,7 +42,6 @@ struct EditorUiState {
     last_requested_size: (u32, u32),
     factory_presets: Vec<FactoryPresetEntry>,
     selected_factory_preset: usize,
-    last_preset_status: Option<String>,
 }
 
 #[derive(Clone)]
@@ -769,7 +768,6 @@ pub fn create_editor(
             last_requested_size: initial_size,
             factory_presets: load_factory_presets(),
             selected_factory_preset: 0,
-            last_preset_status: None,
         },
         |_, _| {},
         move |egui_ctx, setter, state| {
@@ -1145,6 +1143,7 @@ fn industrial_fader(
     let thumb_height = 20.0 * scale;
     let value_width = 44.0 * scale;
     let label_width = 80.0 * scale;
+    let track_inset = 8.0 * scale;
     let row_height = thumb_height.max(track_height + 4.0 * scale);
 
     let desired_size = egui::vec2(ui.available_width(), row_height + 4.0 * scale);
@@ -1163,8 +1162,8 @@ fn industrial_fader(
     }
     if response.dragged() {
         if let Some(pointer) = response.interact_pointer_pos() {
-            let track_left = rect.min.x + value_width;
-            let track_right = rect.right() - label_width;
+            let track_left = rect.min.x + value_width + track_inset;
+            let track_right = rect.right() - label_width - track_inset;
             let track_width = track_right - track_left;
             if track_width > 0.0 {
                 let new_normalized = ((pointer.x - track_left) / track_width).clamp(0.0, 1.0);
@@ -1181,8 +1180,8 @@ fn industrial_fader(
     if response.clicked() {
         setter.begin_set_parameter(param);
         if let Some(pointer) = response.interact_pointer_pos() {
-            let track_left = rect.min.x + value_width;
-            let track_right = rect.right() - label_width;
+            let track_left = rect.min.x + value_width + track_inset;
+            let track_right = rect.right() - label_width - track_inset;
             let track_width = track_right - track_left;
             if track_width > 0.0 {
                 let new_normalized = ((pointer.x - track_left) / track_width).clamp(0.0, 1.0);
@@ -1209,8 +1208,8 @@ fn industrial_fader(
     );
 
     // Track
-    let track_left = rect.min.x + value_width;
-    let track_right = rect.right() - label_width;
+    let track_left = rect.min.x + value_width + track_inset;
+    let track_right = rect.right() - label_width - track_inset;
     let track_rect = egui::Rect::from_center_size(
         egui::pos2((track_left + track_right) * 0.5, cy),
         egui::vec2(track_right - track_left, track_height),
@@ -1268,10 +1267,10 @@ fn industrial_vfader(
     accent: egui::Color32,
     scale: f32,
 ) -> egui::Response {
-    let track_width = 20.0 * scale;
+    let track_width = 26.0 * scale;
     let track_height = 120.0 * scale;
-    let thumb_width = 24.0 * scale;
-    let thumb_height = 14.0 * scale;
+    let thumb_width = 30.0 * scale;
+    let thumb_height = 16.0 * scale;
     let desired_size = egui::vec2(track_width + 34.0 * scale, track_height + 44.0 * scale);
 
     let (rect, response) = ui.allocate_exact_size(desired_size, egui::Sense::click_and_drag());
@@ -1586,11 +1585,14 @@ fn render_ui(
     ui.add_space(4.0 * scale);
 
     // Three columns
+    let original_item_spacing_x = ui.spacing().item_spacing.x;
+    ui.spacing_mut().item_spacing.x = 8.0 * scale;
     ui.columns(3, |columns| {
         render_exciter_column(&mut columns[0], params, setter, scale);
         render_resonator_column(&mut columns[1], params, setter, scale);
         render_processing_column(&mut columns[2], params, setter, scale);
     });
+    ui.spacing_mut().item_spacing.x = original_item_spacing_x;
 
     // Footer
     render_footer(ui, scale);
@@ -1623,18 +1625,23 @@ fn render_header(
                 );
                 ui.painter().rect_filled(accent_rect, 0.0, DANGER_RED);
                 ui.add_space(4.0 * scale);
-                ui.vertical(|ui| {
-                    ui.label(
-                        egui::RichText::new("INDUSTRIAL RESONATOR")
-                            .size(8.0 * scale)
-                            .color(MUTED_GREY),
-                    );
-                    ui.label(
-                        egui::RichText::new("MODEL: CR-89X")
-                            .size(8.0 * scale)
-                            .color(MUTED_GREY),
-                    );
-                });
+                let text_block_size = egui::vec2(80.0 * scale, 24.0 * scale);
+                let (text_rect, _) = ui.allocate_exact_size(text_block_size, egui::Sense::hover());
+                let painter = ui.painter();
+                let font = egui::FontId::proportional(8.0 * scale);
+                let galley1 =
+                    painter.layout_no_wrap("INDUSTRIAL RESONATOR".into(), font.clone(), MUTED_GREY);
+                let galley2 =
+                    painter.layout_no_wrap("MODEL: CR-89X".into(), font.clone(), MUTED_GREY);
+                let gap = 2.0 * scale;
+                let total_h = galley1.rect.height() + galley2.rect.height() + gap;
+                let y = text_rect.center().y - total_h / 2.0;
+                painter.galley(egui::pos2(text_rect.min.x, y), galley1.clone(), MUTED_GREY);
+                painter.galley(
+                    egui::pos2(text_rect.min.x, y + galley1.rect.height() + gap),
+                    galley2,
+                    MUTED_GREY,
+                );
             });
 
             columns[1].vertical_centered(|ui| {
@@ -1865,7 +1872,7 @@ fn render_preset_loader(
                 if ui
                     .add_sized(
                         arrow_size,
-                        egui::Button::new(egui::RichText::new("‹").size(10.0 * scale)),
+                        egui::Button::new(egui::RichText::new("‹").size(14.0 * scale)),
                     )
                     .clicked()
                 {
@@ -1877,14 +1884,16 @@ fn render_preset_loader(
                     let entry = state.factory_presets[state.selected_factory_preset].clone();
                     if let Ok(preset) = Preset::load(&entry.path) {
                         apply_preset(params, setter, &preset);
-                        state.last_preset_status = Some(format!("Loaded {}", preset.name));
                     }
                 }
 
+                let spacing = ui.spacing().item_spacing.x;
+                let combo_width = (ui.available_width() - arrow_size.x - spacing).max(80.0 * scale);
                 egui::ComboBox::from_id_salt("factory-preset-loader")
+                    .width(combo_width)
                     .selected_text(
                         egui::RichText::new(selected_name)
-                            .size(9.0 * scale)
+                            .size(14.0 * scale)
                             .color(OFF_WHITE),
                     )
                     .show_ui(ui, |ui| {
@@ -1892,15 +1901,13 @@ fn render_preset_loader(
                             if ui
                                 .selectable_label(
                                     index == state.selected_factory_preset,
-                                    egui::RichText::new(&preset.name).size(9.0 * scale),
+                                    egui::RichText::new(&preset.name).size(14.0 * scale),
                                 )
                                 .clicked()
                             {
                                 state.selected_factory_preset = index;
                                 if let Ok(loaded) = Preset::load(&preset.path) {
                                     apply_preset(params, setter, &loaded);
-                                    state.last_preset_status =
-                                        Some(format!("Loaded {}", loaded.name));
                                 }
                             }
                         }
@@ -1909,7 +1916,7 @@ fn render_preset_loader(
                 if ui
                     .add_sized(
                         arrow_size,
-                        egui::Button::new(egui::RichText::new("›").size(10.0 * scale)),
+                        egui::Button::new(egui::RichText::new("›").size(14.0 * scale)),
                     )
                     .clicked()
                 {
@@ -1918,21 +1925,13 @@ fn render_preset_loader(
                     let entry = state.factory_presets[state.selected_factory_preset].clone();
                     if let Ok(preset) = Preset::load(&entry.path) {
                         apply_preset(params, setter, &preset);
-                        state.last_preset_status = Some(format!("Loaded {}", preset.name));
                     }
                 }
             });
             ui.horizontal(|ui| {
-                let save_button = egui::Button::new(egui::RichText::new("💾").size(10.0 * scale));
+                let save_button = egui::Button::new(egui::RichText::new("Save").size(12.0 * scale));
                 let _ = ui.add_enabled(false, save_button);
             });
-            if let Some(status) = &state.last_preset_status {
-                ui.label(
-                    egui::RichText::new(status)
-                        .size(8.0 * scale)
-                        .color(MUTED_GREY),
-                );
-            }
         });
     });
 }
@@ -2158,22 +2157,47 @@ fn render_exciter_column(
         );
         ui.add_space(4.0 * scale);
 
-        // Exciter controls (faders)
         if !panel_spec.controls.is_empty() {
             let recessed = recessed_panel(scale);
             recessed.show(ui, |ui| {
                 section_heading(ui, panel_spec.title, SAFETY_YELLOW, scale);
-                for spec in panel_spec.controls {
-                    industrial_fader(
-                        ui,
-                        spec.label,
-                        exciter_param_ref(params, spec.id),
-                        spec.min,
-                        spec.max,
-                        setter,
-                        SAFETY_YELLOW,
-                        scale,
-                    );
+                ui.add_space(8.0 * scale);
+                let controls = panel_spec.controls;
+                let knob_count = controls.len();
+                let cols = if knob_count <= 3 {
+                    knob_count
+                } else if knob_count <= 5 {
+                    2
+                } else {
+                    3
+                };
+                let knob_width = 58.0 * scale;
+                for row in controls.chunks(cols) {
+                    let available = ui.available_width();
+                    let total_knob_width = row.len() as f32 * knob_width;
+                    let gap = if row.len() > 0 {
+                        ((available - total_knob_width) / (row.len() + 1) as f32).max(0.0)
+                    } else {
+                        0.0
+                    };
+                    ui.horizontal(|ui| {
+                        ui.add_space(gap);
+                        for spec in row.iter() {
+                            industrial_knob(
+                                ui,
+                                spec.label,
+                                exciter_param_ref(params, spec.id),
+                                spec.min,
+                                spec.max,
+                                setter,
+                                SAFETY_YELLOW,
+                                scale,
+                                true,
+                            );
+                            ui.add_space(gap);
+                        }
+                    });
+                    ui.add_space(6.0 * scale);
                 }
             });
         }
@@ -2270,7 +2294,7 @@ fn render_envelope(
                     .color(MUTED_GREY),
             );
             ui.add_space(4.0 * scale);
-            let fader_w = 44.0 * scale;
+            let fader_w = 58.0 * scale;
             let gap = 20.0 * scale;
             let avail = ui.available_width();
             let total = 2.0 * fader_w + gap;
@@ -2308,7 +2332,7 @@ fn render_envelope(
                     .color(MUTED_GREY),
             );
             ui.add_space(4.0 * scale);
-            let fader_w = 44.0 * scale;
+            let fader_w = 58.0 * scale;
             let gap = 12.0 * scale;
             let avail = ui.available_width();
             let total = 3.0 * fader_w + 2.0 * gap;
@@ -2425,7 +2449,7 @@ fn render_envelope(
                     .color(MUTED_GREY),
             );
             ui.add_space(4.0 * scale);
-            let fader_w = 44.0 * scale;
+            let fader_w = 58.0 * scale;
             let gap = 8.0 * scale;
             let avail = ui.available_width();
             let total = 4.0 * fader_w + 3.0 * gap;
@@ -2550,6 +2574,7 @@ fn render_resonator_column(
             let recessed = recessed_panel(scale);
             recessed.show(ui, |ui| {
                 section_heading(ui, panel_spec.title, RUST_ORANGE, scale);
+                ui.add_space(8.0 * scale);
                 let controls = panel_spec.controls;
                 let knob_count = controls.len();
                 let cols = if knob_count <= 3 {
@@ -2557,15 +2582,18 @@ fn render_resonator_column(
                 } else {
                     (knob_count as f32).sqrt().ceil() as usize
                 };
-                let knob_width = 48.0 * scale;
-                let knob_gap = 18.0 * scale;
+                let knob_width = 58.0 * scale;
                 for row in controls.chunks(cols) {
-                    let row_width = row.len() as f32 * knob_width
-                        + row.len().saturating_sub(1) as f32 * knob_gap;
-                    let offset = ((ui.available_width() - row_width) / 2.0).max(0.0);
+                    let available = ui.available_width();
+                    let total_knob_width = row.len() as f32 * knob_width;
+                    let gap = if row.len() > 0 {
+                        ((available - total_knob_width) / (row.len() + 1) as f32).max(0.0)
+                    } else {
+                        0.0
+                    };
                     ui.horizontal(|ui| {
-                        ui.add_space(offset);
-                        for (index, spec) in row.iter().enumerate() {
+                        ui.add_space(gap);
+                        for spec in row.iter() {
                             industrial_knob(
                                 ui,
                                 spec.label,
@@ -2575,11 +2603,9 @@ fn render_resonator_column(
                                 setter,
                                 RUST_ORANGE,
                                 scale,
-                                false,
+                                true,
                             );
-                            if index + 1 < row.len() {
-                                ui.add_space(knob_gap);
-                            }
+                            ui.add_space(gap);
                         }
                     });
                     ui.add_space(6.0 * scale);
@@ -2727,6 +2753,7 @@ fn render_processing_column(
         let recessed = recessed_panel(scale);
         recessed.show(ui, |ui| {
             section_heading(ui, "Filter Bank", OFF_WHITE, scale);
+            ui.add_space(8.0 * scale);
             let large_knob_w = 58.0 * scale;
             let cutoff_offset = ((ui.available_width() - large_knob_w) / 2.0).max(0.0);
             ui.horizontal(|ui| {

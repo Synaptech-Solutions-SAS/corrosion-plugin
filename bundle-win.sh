@@ -7,7 +7,7 @@ PROFILE="${1:-release}"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR"
-TARGET_DIR="${PROJECT_DIR}/../corrotion-target"
+TARGET_DIR="${PROJECT_DIR}/../corrosion-target"
 
 echo "Building ${PLUGIN_NAME} for ${TARGET} (${PROFILE})..."
 cargo build --target "${TARGET}" --"${PROFILE}" --lib
@@ -16,7 +16,7 @@ BUNDLE_DIR="${PROJECT_DIR}/target/bundled-win/${PLUGIN_NAME}.vst3"
 rm -rf "${BUNDLE_DIR}"
 mkdir -p "${BUNDLE_DIR}/Contents/x86_64-win"
 
-DLL_PATH="${TARGET_DIR}/${TARGET}/${PROFILE}/corrotion.dll"
+DLL_PATH="${TARGET_DIR}/${TARGET}/${PROFILE}/corrosion.dll"
 if [ ! -f "${DLL_PATH}" ]; then
     echo "Error: Built library not found at ${DLL_PATH}"
     exit 1

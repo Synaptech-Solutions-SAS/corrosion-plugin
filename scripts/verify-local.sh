@@ -6,7 +6,7 @@ set -euo pipefail
 # reproduce failures before pushing changes.
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-RENDER_DIR="/tmp/corrotion-local-verify-render"
+RENDER_DIR="/tmp/corrosion-local-verify-render"
 
 cd "${PROJECT_DIR}"
 

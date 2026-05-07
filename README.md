@@ -95,8 +95,8 @@ cargo fmt --check
 cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 cargo test --workspace --no-default-features
 cargo test --lib --target x86_64-unknown-linux-gnu
-cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite family --out-dir /tmp/corrotion-verify-render
-python3 scripts/check_wav.py /tmp/corrotion-verify-render/pipe_comparison.wav
+cargo run --target x86_64-unknown-linux-gnu --bin render -- --suite family --out-dir /tmp/corrosion-verify-render
+python3 scripts/check_wav.py /tmp/corrosion-verify-render/pipe_comparison.wav
 ./bundle.sh release
 
 # Optional host/plugin validators when installed locally

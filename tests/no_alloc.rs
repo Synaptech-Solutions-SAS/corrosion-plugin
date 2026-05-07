@@ -1,7 +1,7 @@
 use assert_no_alloc::assert_no_alloc;
-use corrotion::dsp::ModalProfileId;
-use corrotion::voice::manager::VoiceManager;
-use corrotion::voice::MAX_VOICES;
+use corrosion::dsp::ModalProfileId;
+use corrosion::voice::manager::VoiceManager;
+use corrosion::voice::MAX_VOICES;
 
 #[test]
 fn process_callback_is_alloc_free() {

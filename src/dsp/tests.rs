@@ -66,7 +66,7 @@ fn unique_test_dir(name: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system time before unix epoch")
         .as_nanos();
-    std::env::temp_dir().join(format!("corrotion_{name}_{nanos}"))
+    std::env::temp_dir().join(format!("corrosion_{name}_{nanos}"))
 }
 
 fn assert_size_scaling_direction(profile_id: ModalProfileId) {
