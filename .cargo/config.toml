@@ -1,5 +1,8 @@
 [build]
-target = "x86_64-unknown-linux-musl"
+# Build natively for this Windows host. The MSVC C++ toolchain (link.exe +
+# Windows SDK) is not installed here, so we target the GNU ABI and link with
+# the mingw-w64 GCC installed via scoop (see the windows-gnu section below).
+target = "x86_64-pc-windows-gnu"
 target-dir = "../corrosion-target"
 
 [target.x86_64-unknown-linux-musl]

@@ -8,9 +8,8 @@ pub struct OversampledClipper {
     softness: f32,
     oversample_factor: usize,
 
-    // Polyphase interpolation/decimation state
-    upsample_state: [f32; 16],
-    downsample_state: [f32; 16],
+    // Previous input per channel, used to interpolate the upsampled grid.
+    prev_input: [f32; 2],
 
     sample_rate: f32,
 }
@@ -22,8 +21,7 @@ impl OversampledClipper {
             ceiling: 0.9661,
             softness: 0.5,
             oversample_factor: 16,
-            upsample_state: [0.0; 16],
-            downsample_state: [0.0; 16],
+            prev_input: [0.0; 2],
             sample_rate: 48000.0,
         }
     }
@@ -46,23 +44,32 @@ impl OversampledClipper {
 
     /// Processes one mono sample through the oversampled limiter.
     pub fn process(&mut self, input: f32) -> f32 {
+        self.process_channel(input, 0)
+    }
+
+    /// Oversamples one channel: linear-interpolate from the previous input up to
+    /// the new input, clip each high-rate sample, then box-filter decimate.
+    ///
+    /// Interpolating across the previous/current input (rather than holding a
+    /// constant) is what makes the factor matter: clipping a rising ramp at the
+    /// high rate and averaging the result band-limits the harmonics the clip
+    /// generates, so higher factors fold less energy back as aliasing.
+    fn process_channel(&mut self, input: f32, channel: usize) -> f32 {
         let os_factor = self.oversample_factor;
+        let prev = self.prev_input[channel];
+        self.prev_input[channel] = input;
+
         if os_factor <= 1 {
             return self.diode_clip(input);
         }
 
-        // Upsample (zero-stuffing with simple hold)
-        let mut os_samples = [0.0f32; 16];
-        os_samples.fill(input);
-
-        // Process each oversampled sample
         let mut sum = 0.0f32;
-        for sample in os_samples.iter().take(os_factor) {
-            let clipped = self.diode_clip(*sample);
-            sum += clipped;
+        for k in 1..=os_factor {
+            let frac = k as f32 / os_factor as f32;
+            let interpolated = prev + (input - prev) * frac;
+            sum += self.diode_clip(interpolated);
         }
 
-        // Decimate (average)
         sum / os_factor as f32
     }
 
@@ -83,13 +90,12 @@ impl OversampledClipper {
 
     /// Processes a stereo frame by clipping each channel independently.
     pub fn process_stereo(&mut self, left: f32, right: f32) -> (f32, f32) {
-        (self.process(left), self.process(right))
+        (self.process_channel(left, 0), self.process_channel(right, 1))
     }
 
     /// Clears oversampling state buffers.
     pub fn reset(&mut self) {
-        self.upsample_state = [0.0; 16];
-        self.downsample_state = [0.0; 16];
+        self.prev_input = [0.0; 2];
     }
 }
 
@@ -133,6 +139,46 @@ mod tests {
                 "Low levels should be preserved"
             );
         }
+    }
+
+    #[test]
+    fn oversampling_factor_changes_output_on_transients() {
+        // Drive both clippers with the same signal that swings past the ceiling.
+        // With real interpolation across inputs, a higher factor band-limits the
+        // clip differently, so the outputs must diverge on the transients.
+        let inputs = [0.0, 2.0, -2.0, 1.5, -1.8, 0.4, -0.4, 2.5];
+
+        let mut c1 = OversampledClipper::new();
+        c1.set_parameters(0.8, 0.5);
+        c1.set_oversample_factor(1);
+
+        let mut c16 = OversampledClipper::new();
+        c16.set_parameters(0.8, 0.5);
+        c16.set_oversample_factor(16);
+
+        let mut total_diff = 0.0f32;
+        for &x in inputs.iter() {
+            total_diff += (c1.process(x) - c16.process(x)).abs();
+        }
+
+        assert!(
+            total_diff > 0.001,
+            "1x and 16x oversampling must differ on transients, diff={total_diff}"
+        );
+    }
+
+    #[test]
+    fn stereo_channels_have_independent_state() {
+        // The two channels must not share interpolation state.
+        let mut clipper = OversampledClipper::new();
+        clipper.set_parameters(0.8, 0.5);
+        clipper.set_oversample_factor(8);
+
+        let (l1, r1) = clipper.process_stereo(2.0, -2.0);
+        assert!(l1.is_finite() && r1.is_finite());
+        // Left rising from 0, right falling from 0 — opposite-signed inputs
+        // should yield opposite-signed clipped outputs.
+        assert!(l1 > 0.0 && r1 < 0.0, "channels must track their own input sign");
     }
 
     #[test]

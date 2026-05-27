@@ -532,18 +532,82 @@ impl Plugin for Corrosion {
         let mut next_event = context.next_event();
         let sample_rate = context.transport().sample_rate as u32;
 
+        // Read parameter values and configure the post-processing chain once per
+        // buffer. These setters recompute coefficients (filter tan(), FEM freqs,
+        // reverb delays) that must not run at audio rate, and the per-sample
+        // version compounded the FactoryReverb comb delays. Host automation is
+        // applied at buffer granularity, so per-buffer updates are sufficient.
+        let drive = self.params.drive.value();
+        let output_gain = self.params.output.value();
+        let width = self.params.width.value();
+        let body_amount = (self.params.body.value() / 5.0).clamp(0.0, 1.0);
+
+        self.post_chain.set_sample_rate(sample_rate as f32);
+        self.post_chain.set_filter_params(
+            self.params.filter_cutoff.value(),
+            self.params.filter_resonance.value(),
+            self.params.component_tolerance.value(),
+        );
+        self.post_chain.set_drive_params(
+            self.params.drive_amount.value(),
+            self.params.bias_starvation.value(),
+            self.params.chaos_depth.value(),
+        );
+        self.post_chain.set_body_params(
+            self.params.chassis_material.value(),
+            self.params.chassis_volume.value().max(body_amount),
+        );
+        self.post_chain.set_spread_params(
+            self.params.spread_width.value(),
+            self.params.listener_proximity.value(),
+        );
+
+        // Map space mode integer to enum
+        let space_mode = match self.params.space_mode.value() {
+            0 => dsp::SpaceMode::Off,
+            1 => dsp::SpaceMode::Factory,
+            2 => dsp::SpaceMode::Spring,
+            3 => dsp::SpaceMode::Echo,
+            _ => dsp::SpaceMode::Off,
+        };
+        self.post_chain.set_space_mode(space_mode);
+
+        let post_quality = match self.params.quality_mode.value() {
+            0 => dsp::PostQualityMode::Eco,
+            1 => dsp::PostQualityMode::Normal,
+            2 => dsp::PostQualityMode::High,
+            3 => dsp::PostQualityMode::Render,
+            _ => dsp::PostQualityMode::Normal,
+        };
+        self.post_chain.set_quality_mode(post_quality);
+        self.post_chain
+            .set_space_amount(self.params.space_amount.value());
+        self.post_chain.set_factory_params(
+            self.params.factory_size.value(),
+            self.params.machinery_clutter.value(),
+            self.params.wall_impedance.value(),
+        );
+        self.post_chain.set_spring_params(
+            self.params.spring_tension.value(),
+            self.params.wire_stiffness.value(),
+            self.params.spring_tank_size.value(),
+        );
+        self.post_chain.set_echo_params(
+            self.params.delay_time.value(),
+            self.params.machinery_movement.value(),
+            self.params.high_frequency_damping.value(),
+        );
+        self.post_chain.set_clipper_params(
+            self.params.analog_ceiling.value(),
+            self.params.diode_softness.value(),
+        );
+
         // Process each sample in the buffer
         for (sample_id, channel_samples) in buffer.iter_samples().enumerate() {
             // Handle any MIDI events scheduled for this sample
             process_pending_events(self, sample_id as u32, &mut next_event, || {
                 context.next_event()
             });
-
-            // Read current parameter values
-            let drive = self.params.drive.value();
-            let output_gain = self.params.output.value();
-            let width = self.params.width.value();
-            let body_amount = (self.params.body.value() / 5.0).clamp(0.0, 1.0);
 
             // Generate stereo audio from all active voices
             let (left_sample, right_sample) =
@@ -555,67 +619,6 @@ impl Plugin for Corrosion {
             // Apply drive/saturation
             left = apply_drive(left, drive);
             right = apply_drive(right, drive);
-
-            // Update post-processing chain parameters (per-sample for modulation)
-            self.post_chain.set_sample_rate(sample_rate as f32);
-            self.post_chain.set_filter_params(
-                self.params.filter_cutoff.value(),
-                self.params.filter_resonance.value(),
-                self.params.component_tolerance.value(),
-            );
-            self.post_chain.set_drive_params(
-                self.params.drive_amount.value(),
-                self.params.bias_starvation.value(),
-                self.params.chaos_depth.value(),
-            );
-            self.post_chain.set_body_params(
-                self.params.chassis_material.value(),
-                self.params.chassis_volume.value().max(body_amount),
-            );
-            self.post_chain.set_spread_params(
-                self.params.spread_width.value(),
-                self.params.listener_proximity.value(),
-            );
-
-            // Map space mode integer to enum
-            let space_mode = match self.params.space_mode.value() {
-                0 => dsp::SpaceMode::Off,
-                1 => dsp::SpaceMode::Factory,
-                2 => dsp::SpaceMode::Spring,
-                3 => dsp::SpaceMode::Echo,
-                _ => dsp::SpaceMode::Off,
-            };
-            self.post_chain.set_space_mode(space_mode);
-
-            let post_quality = match self.params.quality_mode.value() {
-                0 => dsp::PostQualityMode::Eco,
-                1 => dsp::PostQualityMode::Normal,
-                2 => dsp::PostQualityMode::High,
-                3 => dsp::PostQualityMode::Render,
-                _ => dsp::PostQualityMode::Normal,
-            };
-            self.post_chain.set_quality_mode(post_quality);
-            self.post_chain
-                .set_space_amount(self.params.space_amount.value());
-            self.post_chain.set_factory_params(
-                self.params.factory_size.value(),
-                self.params.machinery_clutter.value(),
-                self.params.wall_impedance.value(),
-            );
-            self.post_chain.set_spring_params(
-                self.params.spring_tension.value(),
-                self.params.wire_stiffness.value(),
-                self.params.spring_tank_size.value(),
-            );
-            self.post_chain.set_echo_params(
-                self.params.delay_time.value(),
-                self.params.machinery_movement.value(),
-                self.params.high_frequency_damping.value(),
-            );
-            self.post_chain.set_clipper_params(
-                self.params.analog_ceiling.value(),
-                self.params.diode_softness.value(),
-            );
 
             // Apply post-processing chain
             let (post_left, post_right) = self.post_chain.process(left, right);

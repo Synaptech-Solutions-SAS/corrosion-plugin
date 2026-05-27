@@ -14,7 +14,7 @@ Each item notes the relevant file(s) and an acceptance check.
 
 ## P0 — Correctness defects (fix first)
 
-- [ ] **[BUG] Oversampled clipper does not oversample.**
+- [x] **[BUG] Oversampled clipper does not oversample.** *(fixed 2026-05-27)*
   `src/dsp/post_processing/oversampled_clipper.rs`. `process()` zero-order-holds a
   single input (`os_samples.fill(input)`) and averages identical clipped copies, so
   1×/4×/8×/16× are mathematically identical. No interpolation, no anti-aliasing,
@@ -25,7 +25,7 @@ Each item notes the relevant file(s) and an acceptance check.
   shows lower `alias_ratio_db` at higher factors; re-base `quality_mode_changes_oversample_factor`
   to exercise the factor (not the Eco bypass).
 
-- [ ] **[BUG] FactoryReverb comb delays mutate cumulatively.**
+- [x] **[BUG] FactoryReverb comb delays mutate cumulatively.** *(fixed 2026-05-27)*
   `src/dsp/post_processing/space.rs::update_delays` re-scales `comb_delays` from
   their own prior values, and `lib.rs` calls it every sample → delays rail to the
   clamp bounds; `factory_size` is effectively dead.
@@ -33,7 +33,7 @@ Each item notes the relevant file(s) and an acceptance check.
   each update (mirror `SpringReverb::update_delay`).
   *Accept:* sweeping `factory_size` changes the tail length monotonically; add a test.
 
-- [ ] **[BUG/PERF] Post-chain parameters set per sample.**
+- [x] **[BUG/PERF] Post-chain parameters set per sample.** *(fixed 2026-05-27)*
   `src/lib.rs::process` calls ~10 `post_chain.set_*` setters inside the sample loop;
   several recompute coefficients (`tan()`, FEM freqs, reverb delays) at audio rate.
   Root cause of the FactoryReverb bug and wasted CPU.

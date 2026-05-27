@@ -21,6 +21,9 @@ pub struct FactoryReverb {
     comb_buffers: [[f32; 2048]; 4],
     comb_indices: [usize; 4],
     comb_delays: [usize; 4],
+    // Immutable base delays; comb_delays is always recomputed from these so
+    // repeated updates can't compound.
+    base_comb_delays: [usize; 4],
 
     // Allpass filters
     allpass_buffers: [[f32; 512]; 2],
@@ -42,6 +45,7 @@ impl FactoryReverb {
             comb_buffers: [[0.0; 2048]; 4],
             comb_indices: [0; 4],
             comb_delays: [1553, 1657, 1789, 1913],
+            base_comb_delays: [1553, 1657, 1789, 1913],
             allpass_buffers: [[0.0; 512]; 2],
             allpass_indices: [0; 2],
             diffusion_y: [0.0; 4],
@@ -66,8 +70,10 @@ impl FactoryReverb {
     fn update_delays(&mut self) {
         let size_scale = 0.5 + self.size * 1.5;
         for i in 0..4 {
-            self.comb_delays[i] = (self.comb_delays[i] as f32 * size_scale) as usize;
-            self.comb_delays[i] = self.comb_delays[i].clamp(100, 2000);
+            let scaled = (self.base_comb_delays[i] as f32 * size_scale) as usize;
+            self.comb_delays[i] = scaled.clamp(100, 2000);
+            // Keep the read/write cursor valid if the delay shrank.
+            self.comb_indices[i] %= self.comb_delays[i];
         }
     }
 
@@ -322,6 +328,46 @@ mod tests {
             let output = reverb.process(input);
             assert!(output.is_finite(), "Spring output should be finite");
         }
+    }
+
+    #[test]
+    fn factory_size_scales_delays_monotonically() {
+        let mut small = FactoryReverb::new();
+        small.set_sample_rate(48000.0);
+        small.set_parameters(0.2, 0.3, 0.5);
+
+        let mut large = FactoryReverb::new();
+        large.set_sample_rate(48000.0);
+        large.set_parameters(0.9, 0.3, 0.5);
+
+        for i in 0..4 {
+            assert!(
+                large.comb_delays[i] > small.comb_delays[i],
+                "larger factory_size should yield longer comb delays (idx {i}): \
+                 large={} small={}",
+                large.comb_delays[i],
+                small.comb_delays[i]
+            );
+        }
+    }
+
+    #[test]
+    fn factory_delays_stable_across_repeated_updates() {
+        // Regression: update_delays used to rescale comb_delays from their own
+        // prior values, so repeated identical updates railed them to the clamp.
+        let mut reverb = FactoryReverb::new();
+        reverb.set_sample_rate(48000.0);
+        reverb.set_parameters(0.5, 0.3, 0.5);
+        let first = reverb.comb_delays;
+
+        for _ in 0..1000 {
+            reverb.set_parameters(0.5, 0.3, 0.5);
+        }
+
+        assert_eq!(
+            first, reverb.comb_delays,
+            "repeated identical updates must not drift the comb delays"
+        );
     }
 
     #[test]

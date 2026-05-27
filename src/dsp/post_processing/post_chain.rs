@@ -278,18 +278,29 @@ mod tests {
 
     #[test]
     fn quality_mode_changes_oversample_factor() {
-        let mut chain = PostProcessingChain::new();
-        chain.set_sample_rate(48000.0);
+        // Both chains run the full (non-Eco) path, so the only difference between
+        // them is the clipper's oversampling factor. Feeding alternating
+        // transients exercises the interpolated upsampling rather than the Eco
+        // bypass.
+        let mut normal = PostProcessingChain::new();
+        normal.set_sample_rate(48000.0);
+        normal.set_quality_mode(PostQualityMode::Normal);
 
-        chain.set_quality_mode(PostQualityMode::Eco);
-        let (eco_l, _) = chain.process(2.0, 2.0);
+        let mut render = PostProcessingChain::new();
+        render.set_sample_rate(48000.0);
+        render.set_quality_mode(PostQualityMode::Render);
 
-        chain.set_quality_mode(PostQualityMode::Render);
-        let (render_l, _) = chain.process(2.0, 2.0);
+        let mut total_diff = 0.0f32;
+        for i in 0..64 {
+            let input = if i % 2 == 0 { 2.0 } else { -2.0 };
+            let (n_l, _) = normal.process(input, input);
+            let (r_l, _) = render.process(input, input);
+            total_diff += (n_l - r_l).abs();
+        }
 
         assert!(
-            (eco_l - render_l).abs() > 0.001,
-            "Different oversampling factors should produce different clipped values for large input"
+            total_diff > 0.001,
+            "4x and 16x oversampling should diverge on transients, diff={total_diff}"
         );
     }
 }
