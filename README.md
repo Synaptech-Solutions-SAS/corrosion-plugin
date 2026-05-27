@@ -114,9 +114,10 @@ Benchmark coverage is local/manual for now. Use `cargo bench --no-default-featur
 
 Active design and implementation references:
 
-- `docs/master-prompt.md`
-- `docs/corrosion_plugin_prd_and_specs.md`
-- `docs/new-detailed-specs/`
-- `docs/production-hardening-log.md`
+- `docs/ARCHITECTURE.md` — as-built architecture, signal chain, and status of claimed work
+- `docs/code-review.md` — critical code review and doc-vs-code conformance matrix
+- `docs/corrosion_plugin_prd_and_specs.md` — product requirements (see §0 for current-state reconciliation)
+- `docs/master-prompt.md` — production-hardening agent prompt (see "Current state" banner)
+- `docs/detailed-specs/` — DSP design notes (each file carries an implementation-status banner)
 
 Legacy roadmap/evidence notes still live under `.sisyphus/`, but the docs above are the current reference for the shipped surface.

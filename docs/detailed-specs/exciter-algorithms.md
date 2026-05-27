@@ -1,3 +1,12 @@
+> **Implementation status (2026-05): IMPLEMENTED, faithful.** All 16 exciters
+> below ship in `src/dsp/exciters/` with the documented DSP models and tunable
+> parameters, dispatched per-voice by integer in `src/voice/mod.rs`. Naming note:
+> the code groups exciters by *envelope family* — **Hit** (one-shot AR), **Friction**
+> (6-stage MSEG), **Specialty** (ADSR) — so the spec's "Hit / Scrape / Other"
+> categories map to Hit / Friction / Specialty, and **Bow** lives in the Friction
+> family. There is no "Motor" exciter (an old PRD name); the rotating-machine role
+> is covered by **Electromagnetic Hum**. See `docs/ARCHITECTURE.md` §6.
+
 # Exciter algorithms and tweaking paramete0
 Each exciter has a name which should be displayed in the selection option in the synth, along with a tooltip description, and the parameters that can be tweaked inside the synth.
 In the exciter selection option they are divided by categories.

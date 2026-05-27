@@ -1,243 +1,370 @@
-# Corrosion Architecture
+# Corrosion Architecture (current state)
 
-This document describes the internal structure, signal flow, and engineering contracts of the Corrosion industrial physical-modeling synthesizer.
+This document describes the **as-built** structure, signal flow, and engineering
+contracts of the Corrosion industrial physical-modeling synthesizer. It is
+written against the code in `src/` as of 2026-05 and is intended to be accurate
+to what actually ships, not to the aspirational DSP described in
+`docs/detailed-specs/`. Where the implementation is a deliberate approximation
+of a spec, that is called out explicitly.
+
+> Companion documents:
+> - `docs/code-review.md` — critical review and a doc-vs-code conformance matrix.
+> - `docs/detailed-specs/` — DSP design notes (some aspirational; see status banners).
+> - `docs/corrosion_plugin_prd_and_specs.md` — product requirements (MVP-era, see status section).
+
+---
 
 ## 1. Signal Chain
 
-The audio path follows a strict per-sample loop inside the host callback:
+The audio path is a strict per-sample loop inside the host `process()` callback
+(`src/lib.rs`). The exciter↔resonator interaction is per-sample by design; the
+global post chain is **also** per-sample today (see §9).
 
 ```text
 MIDI Note Event
       │
       ▼
-┌─────────────┐
-│ VoiceManager│  ← Polyphony, stealing, per-note state
-│   (8 voices)│
-└──────┬──────┘
-       │
-       ▼
-┌─────────────┐     ┌─────────────┐
-│   Exciter   │────▶│ Interaction │  ← Force, displacement, velocity
-│  (16 types) │     │    Bus      │
-└─────────────┘     └──────┬──────┘
-                           │
-                           ▼
-┌─────────────────────────────────────┐
-│         ModalResonator              │  ← 9 object profiles, mode banks
-│  (Pipe, Plate, Tank, Chain, etc.)   │
-└─────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────┐
-│      PostProcessingChain            │  ← Filter, drive, body, spread,
-│  (WDF → Drive → Body → HRTF → Space│    space, oversampled clipper
-│   → Clipper → Limiter)              │
-└─────────────────────────────────────┘
-                           │
-                           ▼
-                    Stereo Output
+┌──────────────────┐
+│  VoiceManager     │  8 fixed voices; quietest-peak + oldest stealing
+│  (MAX_VOICES = 8) │  only voices with `is_rendering()` are summed
+└────────┬──────────┘
+         │  per active voice:
+         ▼
+┌──────────────────┐   force/displacement/velocity   ┌──────────────────┐
+│   Exciter (1/16) │◀────────────────────────────────│  Interaction Bus  │
+│  family dispatch │────────────────────────────────▶│  spatial coeffs    │
+└──────────────────┘                                  └─────────┬─────────┘
+                                                                │
+                                                                ▼
+                                                  ┌──────────────────────────┐
+                                                  │     ModalResonator        │
+                                                  │  N second-order modes      │
+                                                  │  + per-mode strike coeffs  │
+                                                  └─────────────┬─────────────┘
+                                                                │
+                          rattle (damage) + velocity highpass boost + clamp/denormal
+                                                                │
+                              Σ voices  ─────────────────────────┘
+                                       │
+                                       ▼
+                         apply_drive() (master/exciter drive, L & R)
+                                       │
+                                       ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                       PostProcessingChain                              │
+│  fold→mono → WDF filter → Lorenz drive →                              │
+│    [Eco: bypass body/spread/space] →                                  │
+│  FEM body → re-stereo → HRTF spread → Space(Factory|Spring|Echo) →    │
+│  OversampledClipper (per channel)                                     │
+└─────────────────────────────────────────────────────────────────────┘
+                                       │
+                                       ▼
+                        × output_gain → apply_output_limiter()
+                                       │  hard clamp to ±0.9661  (≈ −0.3 dBFS)
+                                       ▼
+                                 Stereo Output
 ```
 
-### Per-Sample Voice Loop
+### Per-Sample Voice Loop (`Voice::process_sample[_stereo]`)
 
-Inside `Voice::process_sample_stereo()`:
+1. **Render gate** — return early if `!rendering` (idle/decayed voices cost nothing).
+2. **Force envelope** — one of three families (see §6): one-shot AR (Hit), ADSR
+   (Specialty), or 6-stage MSEG (Friction).
+3. **Exciter** — selected model is fed the resonator's current displacement and
+   velocity (`get_displacement()` / `get_velocity()`), producing a force.
+4. **Resonator** — force is distributed across modes by strike-position
+   coefficients and the coupling blend, then each second-order mode is advanced.
+5. **Damage rattle** — amplitude-gated noise injected when `damage > 0`.
+6. **Velocity highpass boost** — velocity-scaled spectral lift.
+7. **Clamp + denormal flush** — output bounded to [-1, 1]; `DENORMAL_FLUSH` trick.
+8. **Peak-hold / tail tracking** — drives voice stealing and tail deactivation
+   (`TAIL_ENERGY_THRESHOLD = 1e-4`, `TAIL_DEACTIVATE_FRAMES = 4800`).
 
-1. **Envelope** — Compute force envelope (OneShot, ADSR, or MSEG)
-2. **Exciter** — Generate force from exciter model (displacement/velocity feedback)
-3. **Resonator** — Feed force into modal bank, get stereo output
-4. **Damage Rattle** — Add amplitude-dependent noise if damage > 0
-5. **Highpass Boost** — Velocity-sensitive spectral shaping
-6. **Clamp & Denormal Flush** — Output bounds and subnormal protection
-7. **Peak Hold & Tail Tracking** — Voice-manager stealing data
+---
 
-## 2. Module Responsibilities
+## 2. Module Map
 
-### `src/lib.rs` — Plugin Host Integration
+```text
+src/
+  lib.rs              Plugin trait impls, MIDI routing, apply_drive, output limiter,
+                      per-sample post-chain parameter updates
+  params.rs           127 host parameters; ExciterType (16), Object (9),
+                      QualityMode (Eco/Normal/High/Render), complex_algo toggle
+  voice/
+    mod.rs            Voice: 16 exciter slots + ModalResonator + 3 envelope models,
+                      VoiceControls snapshot, midi_to_hz, tail/rendering lifecycle
+    manager.rs        VoiceManager: 8-voice pool, quietest+oldest stealing, idle gating
+  dsp/
+    mod.rs            Re-exports
+    interaction.rs    BidirectionalInteractionBus, InteractionState,
+                      mode_coefficient_1d/2d/circular, fundamental lock, wander
+    transforms.rs     Newtypes: SizeScale, RustAmount, DamageAmount,
+                      ThicknessAmount, HeatAmount, SludgeAmount (bounded/sanitized)
+    profile.rs        ModalModeSpec + transform methods (scaled_for_size, corroded,
+                      thickened, heated, sludge_loaded, damaged, retuned, adjusted_for_controls)
+    profiles/         Per-object modal mode tables (pipe, plate, tank, chain, ibeam,
+                      taut_cable, coil_spring, sheet_metal, industrial_cog)
+    resonators/       core.rs (ModalResonator, SecondOrderMode, ResonatorCore trait,
+                      ResonatorCoefficients) + algorithmic resonators and the
+                      ResonatorAlgorithm path (complex_algo = 1)
+    envelopes/        mod.rs: 6-stage MSEG, Stage, LoopMode
+    exciters/         16 exciters (bow, hand_strike, felt_mallet, hard_mallet,
+                      drumstick, wire_brush, metal_pipe, metal_chain, stiff_point,
+                      heavy_grinding, corrugated_drag, tension_rise, other_specialty
+                      [pneumatic_jet, electromagnetic_hum, tension_snap, particle_rain])
+    post_processing/  wdf_filter, lorenz_drive, fem_body, hrtf_spread, space
+                      (FactoryReverb/SpringReverb/FactoryEcho), oversampled_clipper,
+                      post_chain (PostProcessingChain + PostQualityMode)
+    utils/            budget (mode-count estimates), body, deterministic_excitation
+  gui/
+    editor.rs         egui editor: knobs/faders, UI scale (50–150%), quality selector
+  presets/
+    mod.rs            Preset save/load + sanitization (out of scope for this review)
+  offline/
+    mod.rs            OfflineRenderer, comparison/rust/damage suites,
+                      AliasingReport + analyze_post_chain_aliasing (DFT residual proxy)
+  randomizer/
+    mod.rs            Parameter randomization helpers
+  bin/
+    render.rs         CLI: --suite family|rust|damage|all|aliasing
+    render_presets.rs CLI: preset batch renderer (auto-discovered bin)
+```
 
-- Implements `nih_plug::Plugin`, `ClapPlugin`, `Vst3Plugin`
-- Bridges host MIDI → `VoiceManager`
-- Bridges host parameter snapshots → `VoiceControls`
-- Owns the global `PostProcessingChain`
-- Applies final output gain and hard limiter
-- **Thread:** Single audio thread only
-
-### `src/params.rs` — Parameter Surface
-
-- Defines 70+ `FloatParam` / `IntParam` fields with ranges, defaults, and skew
-- `ExciterType` and `Object` enums map integers to named variants
-- Host automation, serialization, and UI all read from this single source of truth
-- Parameter IDs are stable for preset compatibility
-
-### `src/voice/` — Polyphony and Per-Note Execution
-
-#### `voice/mod.rs`
-- `Voice` struct: one resonator + 16 exciter slots + envelope state
-- `VoiceControls`: snapshot of all parameters copied at note-on
-- `midi_to_hz()`: standard 440 Hz A4 tuning
-- Envelope dispatch: `OneShotEnvelopePhase`, `AdsrPhase`, `MSEG`
-- Real-time safety: no allocation, no locks, bounded loops
-
-#### `voice/manager.rs`
-- `VoiceManager`: fixed array of 8 `Voice` instances
-- Stealing: prefer oldest voice with lowest `peak_hold`; non-finite peaks are treated as zero
-- Sample-accurate event timing via `process_pending_events()`
-
-### `src/dsp/` — Pure DSP Primitives
-
-| Sub-module | Purpose |
-|---|---|
-| `exciters/` | 16 exciter algorithms (impact, scrape, specialty) |
-| `resonators/` | Modal resonator core + 9 object profiles |
-| `interaction/` | Bidirectional bus, spatial coefficients, coupling |
-| `envelopes/` | MSEG with looping, velocity response, curve tension |
-| `post_processing/` | WDF filter, Lorenz drive, body, HRTF spread, space, clipper |
-| `profile/` | Modal mode tables for each object family |
-| `transforms/` | Size, rust, damage, thickness, heat, sludge transformations |
-| `utils/` | Mode-count estimation, offline limits, safe wrappers |
-
-### `src/gui/editor.rs` — Industrial egui Interface
-
-- Custom knobs, faders, screws, metal panels
-- Parameter binding via NIH-plug gesture lifecycle
-- UI scaling (50%–150%) via `EguiState`
-- **Thread:** GUI thread only; never touches audio state directly
-
-### `src/presets/mod.rs` — State Persistence
-
-- `Preset` struct: versioned JSON schema with top-level + extended parameters
-- `Preset::sanitized()` loads values through live parameter ranges (clamps hostile input)
-- `Preset::from_params()` / `into_params()` roundtrip through `CorrosionParams`
-
-### `src/offline/` — Batch Rendering
-
-- Deterministic offline renderer for QA and comparison suites
-- WAV output + JSON manifest
-- Used by `src/bin/render.rs` CLI and integration tests
+---
 
 ## 3. Real-Time Safety Contract
 
-The audio callback (`Plugin::process()`) guarantees:
+The audio callback guarantees:
 
-- **No heap allocation** — Verified by `tests/no_alloc.rs`
-- **No locks or blocking** — Voice array is fixed; no mutexes
-- **No file I/O or logging** — All I/O happens in GUI or offline contexts
-- **No dynamic dispatch in hot path** — Exciter dispatch is a `match` on integer, not trait objects
-- **No unbounded loops** — Modal banks have fixed maximum sizes; MSEG stages are bounded
-- **Denormal protection** — `DENORMAL_FLUSH` added to voice output; resonator coefficients clamped
-- **NaN/Inf guards** — Every voice output is checked with `is_finite()` before leaving the voice boundary
+- **No heap allocation** — verified by `tests/no_alloc.rs`; the non-Windows build
+  enables nih_plug's `assert_process_allocs` feature (`Cargo.toml` target cfg).
+- **No locks / blocking / I/O / logging** in `process()`.
+- **Fixed voice array** — 8 `Voice` instances, each owning all 16 exciter structs
+  so dispatch is a `match` on an integer (no trait objects, no allocation).
+- **Bounded loops** — modal banks have fixed sizes; MSEG stages are bounded.
+- **Denormal protection** — `DENORMAL_FLUSH` add/subtract at the voice boundary;
+  resonator coefficients clamp `decay_seconds` to `f32::EPSILON`.
+- **NaN/Inf guards** — every voice output is checked with `is_finite()` and
+  flushed to zero before leaving the voice.
+- **NaN-safe stealing** — non-finite `peak_hold` sorts as the quietest voice
+  (`comparable_peak_hold`), so a corrupted voice is reclaimed rather than panicking.
+
+> Caveat: parameter *application* is not control-rate. `lib.rs` calls every
+> `post_chain.set_*` setter once per sample, which recomputes coefficients at
+> audio rate. This is real-time-*safe* (no allocation) but wasteful, and it is
+> the proximate cause of the FactoryReverb delay bug (see `docs/code-review.md`).
+
+---
 
 ## 4. Voice Lifecycle
 
 ```text
-Idle ──note_on()──▶ Active ──note_off()──▶ Tail ──peak<threshold──▶ Idle
-                      │                        │   (0.1s decay)
-                      │                        │
-                      ▼                        ▼
-               Steal if polyphony        Natural resonator decay
-               exhausted                + envelope release
+Idle ──note_on──▶ Active(rendering) ──note_off──▶ Tail(rendering) ──peak<thr for 4800 frames──▶ Idle(!rendering)
+                       │                               │
+                       └─ steal if pool exhausted      └─ resonator decays naturally; exciter released
 ```
 
-- **Note-on**: Parameters snapshotted → resonator rebuilt → exciter triggered → envelope initialized
-- **Note-off**: `active` flag cleared → envelope enters release → exciter may release
-- **Tail**: Resonator decays naturally; voice deactivates after `TAIL_DEACTIVATE_FRAMES` below `TAIL_ENERGY_THRESHOLD`
-- **Steal**: Manager selects voice with lowest `peak_hold`; if all peaks are non-finite, they sort as zero
+- **note_on**: snapshot parameters into `VoiceControls`, rebuild the resonator
+  (profile-table path, or the algorithmic path if `complex_algo = 1`; see the
+  approved change in §5 — slated to become algorithmic-only), configure
+  interaction params, trigger the selected exciter, init the envelope. Sets both
+  `active` and `rendering` true.
+- **note_off**: clears `active`, releases the exciter and force envelope; the
+  resonator tail keeps `rendering` true until it decays.
+- **Tail deactivation**: when `!active` and `peak_hold < TAIL_ENERGY_THRESHOLD`
+  for `TAIL_DEACTIVATE_FRAMES`, both `active` and `rendering` go false and the
+  voice stops costing CPU. (`is_rendering()` is the idle-CPU optimization.)
+- **Stealing**: `VoiceManager` prefers an inactive (`!is_rendering`) slot; if none,
+  it steals the lowest `peak_hold`, breaking ties toward the oldest `start_frame`.
 
-## 5. Parameter Flow
+---
+
+## 5. Resonator Model
+
+`ModalResonator` holds `Vec<SecondOrderMode>`. Each mode is the canonical biquad
+resonator:
 
 ```text
-Host DAW
-   │
-   ▼
-nih_plug Params trait
-   │
-   ▼
-CorrosionParams (Arc)
-   │
-   ├──▶ GUI thread (read-only display)
-   │
-   └──▶ Audio thread (read-only per-sample)
-            │
-            ▼
-      VoiceControls snapshot at note-on
-            │
-            ▼
-      Voice::process_sample_stereo()
+y[n] = b0·x[n] − a1·y[n-1] − a2·y[n-2]
+ω = 2π·f / sample_rate
+r = exp(−1 / (decay_seconds · sample_rate))
+a1 = −2r·cos(ω),  a2 = r²,  b0 = gain
 ```
 
-All parameter values are copied into `VoiceControls` at note-on so the audio thread never reads shared mutable parameter state after that point.
+Two construction paths exist:
 
-## 6. Resonator Model
+- **Profile table** (`complex_algo = 0`, default): start from a curated
+  `ModalModeSpec` table per object, then apply transforms in order
+  (size → rust → thickness → heat → sludge → damage), retune to the MIDI pitch,
+  and apply `res_damping`/`res_brightness`.
+- **Algorithmic** (`complex_algo = 1`): generate modes from a per-object
+  `ResonatorAlgorithm` (`PipeResonator`, `PlateResonator`, … `IndustrialCogResonator`)
+  and then apply the same transform chain.
 
-Each `ModalResonator` maintains a bank of `SecondOrderMode` structures:
+Coefficients are cached and rebuilt on sample-rate change. Transformation macros
+are applied at note-on and stay fixed for the duration of the note.
 
-- **Frequency**: Derived from profile table, scaled by `SizeScale`, detuned by `DamageAmount`
-- **Damping**: Modified by `RustAmount`, `SludgeAmount`, `HeatAmount`, and `ResDamping`
-- **Gain**: Normalized per-profile, boosted by `ResBrightness`, shaped by strike position
-- **Transformation macros**: Applied at note-on; coefficients remain fixed during the note
+> **Approved change (decided 2026-05, pending implementation).** The dual-path
+> design above is being consolidated: the **algorithmic path becomes the only
+> path**, `complex_algo` is removed, and a **curated set of 14 per-object
+> "character" parameters** is exposed (Pipe Diameter, Plate Aspect/Stiffness, Tank
+> Volume/Cavity Mix, Chain Link Mass/Instability, IBeam Shear, Cable Braid/Tension
+> Drop, Spring Dispersion/Slosh, Sheet Thinness, Cog Dissonance). Profile tables
+> are kept as `mode_count`/budget/test metadata only and stop driving sound. Two
+> generator pitch gaps (Chain ignores the note; Tank's cavity is a fixed Hz) are
+> fixed, and the per-sample dynamic hooks (`TautCable` amplitude→pitch,
+> `SheetMetal` warp) are wired into the resonator loop. The default object timbres
+> will change as a result. See `docs/backlog.md` → "Algorithmic resonator engine"
+> for the task breakdown and the full parameter table.
 
-Profiles are curated for distinct physical geometries:
-- **Pipe** — Cylindrical longitudinal modes
-- **Plate** — 2D surface, flatter metallic ring
-- **Tank** — Volumetric, boomier cavity modes
-- **Chain** — Linked segments, roughest profile
-- **IBeam**, **TautCable**, **CoilSpring**, **SheetMetal**, **IndustrialCog**
+Nine object profiles ship: **Pipe, Plate, Tank, Chain, IBeam, TautCable,
+CoilSpring, SheetMetal, IndustrialCog**.
 
-## 7. Post-Processing Chain
+---
 
-Global stereo effects applied after voice mixing:
+## 6. Exciter System
 
-1. **WDF Ladder Filter** — Resonant lowpass with component tolerance
-2. **Lorenz Drive** — Chaotic saturation with bias starvation
-3. **Fem Body Resonator** — Cabinet/chassis simulation
-4. **HRTF Spread** — Stereo width via interaural time difference
-5. **Space** — Factory reverb, spring reverb, or echo (selectable)
-6. **Oversampled Clipper** — 4x oversampled diode clipper with adjustable ceiling
-7. **Hard Limiter** — Final `[-0.9661, 0.9661]` clamp
+Sixteen exciters dispatch by integer (`ExciterType`, IDs 1–16). Each owns its
+DSP state and is fed the resonator's contact displacement/velocity each sample so
+the interaction is genuinely bidirectional (not feed-through). Families drive the
+force-envelope choice:
 
-## 8. Build and Test Infrastructure
+| Family | Members | Envelope |
+|---|---|---|
+| Hit | HandStrike, FeltMallet, HardMallet, Drumstick, WireBrush, MetalPipe, MetalChain | one-shot AR |
+| Friction | Bow, StiffPoint, HeavyGrinding, CorrugatedDrag, TensionRise | 6-stage MSEG (loopable) |
+| Specialty | PneumaticJet, ElectromagneticHum, TensionSnap, ParticleRain | ADSR |
+
+The per-exciter DSP models implement the formulas in
+`docs/detailed-specs/exciter-algorithms.md` (Kelvin–Voigt, Hertzian contact,
+micro-bouncing, Poisson impulse clusters, Stribeck friction, etc.).
+
+---
+
+## 7. Interaction Bus
+
+`BidirectionalInteractionBus` / `InteractionState` implement the spec in
+`docs/detailed-specs/exciter-resonator-interaction.md`:
+
+- Per-mode 1D strike coefficients `c_n(P) = sin((n+1)·π·P)`.
+- `fundamental_anchor` clamps `c_0` to a minimum so the pitch never fully nulls.
+- `coupling_stiffness` blends feed-forward (`0`) ↔ position-weighted (`1`) force.
+- `position_wander` adds a bounded sinusoidal drift to the strike position.
+- The resonator reports summed displacement and a first-difference velocity back
+  to the exciter each sample.
+
+---
+
+## 8. Transformations
+
+`profile.rs` implements all six transforms from
+`docs/detailed-specs/transformation-algorithms.md`, applied to mode specs:
+
+| Transform | Effect (implemented) |
+|---|---|
+| Size | `f /= scale`, `decay *= scale`, low-mode gain tilt |
+| Rust | high-mode-weighted brightness loss + decay loss |
+| Thickness | stiffness `√(1 + (t−0.5)·0.15·n²)` raises/inharmonicizes partials |
+| Heat | pitch drop (`·(1 − heat·0.05)`) + brightness loss |
+| Sludge | mass loading `f·√(1/(1+sludge))` + broadband damping |
+| Damage | mode splitting into detuned pairs + amplitude-gated rattle (in the voice) |
+
+Velocity expressiveness (force `V^1.5`, brightness, decay) is applied in the
+exciters and envelope velocity response.
+
+---
+
+## 9. Post-Processing Chain
+
+`PostProcessingChain` runs, in order: WDF ladder filter → Lorenz drive →
+(Eco bypass) → FEM body → HRTF spread → Space → oversampled clipper. These are
+**lightweight, real-time-safe approximations** of the high-fidelity algorithms in
+`docs/detailed-specs/post-processing.md`; the module docstrings say as much. See
+`docs/code-review.md` §"Post-processing conformance" for the exact gap per stage.
+
+Stage summary (as implemented):
+
+| Stage | Reality |
+|---|---|
+| WDF ladder filter | 4-pole ladder, soft transistor clip, hash-noise "tolerance" — not a Newton-Raphson WDF circuit |
+| Lorenz drive | real Lorenz attractor state used as a mild gain modulator + soft tube curve |
+| FEM body | 8 fixed modal resonators — not a finite-element mesh |
+| HRTF spread | ≤1 ms delay + 1-pole LP/HP + crossfeed — not HRIR convolution |
+| Factory reverb | 4 comb + 2 allpass (Schroeder) — not 3D FDTD |
+| Spring reverb | single delay line + 1-pole dispersion — not a helical PDE |
+| Factory echo | modulated stereo delay (gentle Doppler-ish) |
+| Oversampled clipper | soft diode clip; **the oversample factor is currently a no-op** (see code review) |
+
+### Quality modes (`QualityMode` → `PostQualityMode`)
+
+| Mode | Oversample factor requested | Chain behavior |
+|---|---|---|
+| Eco | 1× | bypasses FEM body, HRTF spread, and Space |
+| Normal (default) | 4× | full chain |
+| High | 8× | full chain |
+| Render | 16× | full chain |
+
+The mapping is wired end-to-end (param → `set_quality_mode` → `set_oversample_factor`),
+and Eco's stage bypass is real and audible. **However the clipper's
+oversampling math does not actually oversample** (it zero-order-holds a single
+input and averages identical copies), so Normal/High/Render are sonically
+identical at the clipper. This is the top defect in `docs/code-review.md`.
+
+### Output protection
+
+Final stage is `apply_output_limiter`: a hard clamp to `±LIMITER_THRESHOLD`
+where `LIMITER_THRESHOLD = 0.9661` (≈ **−0.3 dBFS**). The clipper's
+`analog_ceiling` parameter defaults to the same 0.9661 and is clamped to
+[0.5, 1.0].
+
+---
+
+## 10. Build, Test, and QA Infrastructure
 
 | Component | Purpose |
 |---|---|
-| `.github/workflows/ci.yml` | CI lane: fmt, clippy, tests, render smoke, bundle |
-| `scripts/verify-local.sh` | Local one-shot verification mirror of CI |
-| `scripts/validate-plugins.sh` | Optional `pluginval` + `clap-validator` wrapper |
-| `benches/performance.rs` | Criterion harness for voice/exciter/post/offline paths |
-| `tests/` | Integration tests: automation stress, preset roundtrip, body, drive, etc. |
-| `src/bin/render.rs` | Offline CLI for deterministic QA renders |
+| `.github/workflows/ci.yml` | fmt, clippy (`-D warnings`), no-default-features tests, native gnu lib tests, `render --suite family` smoke, WAV check, `bundle.sh release` |
+| `scripts/verify-local.sh` | local mirror of CI |
+| `scripts/validate-plugins.sh` | optional `pluginval` + `clap-validator` wrapper |
+| `scripts/check_wav.py` / `analyze_wav.py` / `check_clicks.py` | offline artifact validation |
+| `benches/performance.rs` | Criterion harness (voice, dense excitation, post chain, idle, offline) |
+| `tests/` | integration tests: no_alloc, automation_stress, preset_roundtrip, body, drive, stereo, velocity, chain distinctness, limiter, damage rattle, bow, plugin metrics |
+| `src/bin/render.rs` | offline QA renderer incl. `--suite aliasing` → `aliasing_report.txt` |
 
-## 9. Known Architectural Decisions
+Default local target is `x86_64-unknown-linux-musl` (`.cargo/config.toml`); the
+bundle/validator flow uses `x86_64-unknown-linux-gnu`.
 
-- **Per-sample processing**: The entire voice chain is per-sample rather than block-based to preserve the bidirectional exciter↔resonator feedback loop. Post-processing could be block-optimized in the future but is currently per-sample for simplicity.
-- **Static exciter dispatch**: Each voice owns all 16 exciter structs to avoid allocation and virtual dispatch. This increases voice memory but guarantees real-time safety.
-- **No quality modes yet**: The resonator always uses its full mode count. Eco/Normal/High/Render modes are planned but not yet implemented.
-- **MSEG only for friction family**: Impact exciters use OneShot; specialty uses ADSR; friction uses MSEG. This is by design to match physical behavior, not a limitation.
+---
 
-## 10. File Map
+## 11. Status of Previously-Claimed Work (verified in code)
 
-```text
-src/
-  lib.rs              Plugin trait impl, MIDI routing, output limiter
-  params.rs           70+ parameter definitions, ExciterType/Object enums
-  voice/
-    mod.rs            Voice struct, envelopes, exciter dispatch
-    manager.rs        VoiceManager, stealing, polyphony
-  dsp/
-    mod.rs            DSP re-exports
-    exciters/         16 exciter algorithms
-    resonators/       Modal bank, second-order modes, 9 profiles
-    interaction/      Bidirectional bus, spatial coefficients
-    envelopes/        MSEG, ADSR, OneShot
-    post_processing/  Filter, drive, body, spread, space, clipper
-    profile/          Modal mode tables
-    transforms/       Size, rust, damage, thickness, heat, sludge
-    utils/            Mode-count estimation, offline helpers
-  gui/
-    editor.rs         Industrial egui interface (feature-gated)
-  presets/
-    mod.rs            Preset save/load, sanitization, roundtrip
-  offline/
-    mod.rs            Offline renderer, WAV writer, comparison suites
-  bin/
-    render.rs         CLI entry point for offline rendering
-    render_presets.rs Preset batch renderer
-```
+| Feature | Status | Evidence |
+|---|---|---|
+| Quality modes (Eco/Normal/High/Render) | Implemented | `params.rs` `QualityMode`, `post_chain.rs` `set_quality_mode`, `lib.rs` mapping |
+| Configurable oversampling 1/4/8/16 | Wired but **ineffective** | `oversampled_clipper.rs` factor is a no-op (see code review) |
+| Idle rendering optimization | Implemented | `Voice::rendering` flag + `is_rendering()` gating in `manager.rs` |
+| Aliasing measurement | Implemented (DFT proxy) | `offline/mod.rs::analyze_post_chain_aliasing`, `render --suite aliasing` |
+| Output ceiling −0.3 dBFS | Implemented | `LIMITER_THRESHOLD = 0.9661`, `analog_ceiling` default 0.9661 |
+
+---
+
+## 12. Known Architectural Decisions & Gaps
+
+- **Per-sample everything.** The exciter↔resonator loop must be per-sample
+  (bidirectional coupling). The post chain is also per-sample today, including
+  parameter setters — block processing remains a future optimization.
+- **All exciters resident per voice.** Trades memory (~all 16 structs × 8 voices)
+  for allocation-free, branch-only dispatch.
+- **Resonator mode count is fixed per profile** (roughly 6–12 base modes). Quality
+  modes do not scale mode count; only post-processing cost is scaled.
+- **Approximate post DSP.** The post/space/output stages are intentionally
+  cheaper than `detailed-specs/post-processing.md`. Treat that spec as a design
+  target, not a description of shipped behavior.
+- **Oversampled clipper is effectively a soft clipper.** Until the no-op is fixed,
+  nonlinear-stage aliasing is unmitigated (and is exactly what the aliasing
+  harness measures).
+- **Dual resonator path is being retired.** A signed-off change (see §5 and
+  `docs/backlog.md`) removes `complex_algo`, makes the algorithmic generators the
+  sole engine, exposes per-object character params, and demotes the profile tables
+  to metadata. Until implemented, the default sound still comes from the profile
+  tables.

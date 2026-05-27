@@ -9,6 +9,53 @@
 
 ---
 
+# 0. Current Implementation Status (2026-05)
+
+> **Read this first.** This PRD captures the original product vision and an
+> MVP-first plan. The shipped instrument has moved **well beyond the MVP** and a
+> number of MVP-era specifics below are now superseded. For an accurate picture of
+> what exists today, see `docs/ARCHITECTURE.md` and `docs/code-review.md`. This
+> section reconciles the two.
+
+**Where the product is now (verified in `src/`):**
+
+| Area | PRD MVP text | Shipped today |
+|---|---|---|
+| Objects | Pipe, Plate, Tank (3) | **9**: Pipe, Plate, Tank, Chain, IBeam, TautCable, CoilSpring, SheetMetal, IndustrialCog |
+| Exciters | enum `Hit, Scrape, Motor`; "Hit" MVP | **16** named models across Hit / Friction / Specialty families. **No "Motor"** — the rotating-machine role is "Electromagnetic Hum" |
+| Parameters | ~6 MVP params | **127** host parameters with stable IDs (the §11 tables are an MVP subset) |
+| Drive | `tanh(asymmetric·drive)` | master `apply_drive` (asymmetric waveshaper) **plus** a Lorenz-modulated post drive |
+| Output safety | `clamp(out, −1.0, 1.0)` | hard limiter at **±0.9661 (≈ −0.3 dBFS)**; soft diode clipper before it |
+| Quality modes | listed as future | **implemented**: Eco/Normal/High/Render (post-stage bypass + oversample-factor wiring) |
+| Polyphony | 8 voices | 8 voices, quietest-peak + oldest stealing, idle voices skip rendering |
+| Post/space | "MVP may omit" | full chain: WDF-style filter, Lorenz drive, FEM-style body, HRTF-style spread, Factory/Spring/Echo space, oversampled clipper (all **approximations** — see code review) |
+| Body/space DSP | algorithmic body resonator | shipped, but lightweight approximations of the high-fidelity `detailed-specs/post-processing.md` targets |
+| Presets | "20 factory presets" | preset system exists (out of scope for the current review) |
+
+**Known defects to track (from `docs/code-review.md`):**
+- The oversampled clipper does **not** actually oversample (factor is a no-op), so
+  the quality modes are sonically identical at the clipper.
+- `FactoryReverb` comb delays are mutated cumulatively per sample, so `factory_size`
+  does not behave correctly.
+- Post-chain parameters are applied per-sample rather than at control rate.
+
+**Planned engine change (approved 2026-05, not yet implemented):** the resonator
+will move to a **single algorithmic engine** — the `complex_algo` toggle is being
+removed, the per-object physics generators become the only path, and a curated set
+of per-object "character" parameters is exposed (profile tables demoted to
+mode-count/budget metadata). Chain/Tank pitch-tracking gaps get fixed and the
+TautCable/SheetMetal dynamic behaviors get wired in. This will change the default
+object timbres. Full breakdown and parameter table: `docs/backlog.md` →
+"Algorithmic resonator engine"; design in `docs/ARCHITECTURE.md` §5.
+
+**Sections of this PRD that remain valid:** product vision (§§2–6), target users,
+non-goals, MIDI/velocity philosophy, real-time-safety requirements (§19, met),
+testing strategy (§22, largely met), and the strategic identity (§32). Treat the
+specific MVP parameter/object/exciter enumerations (§§10–11, §23.1, §30) as
+historical — the current surface is larger and is documented in `ARCHITECTURE.md`.
+
+---
+
 # 1. Executive Summary
 
 Corrosion is a software synthesizer plugin focused on physically modeled industrial materials and objects. Instead of using traditional oscillators as the primary sound source, Corrosion models the behavior of struck, scraped, bowed, rattled, and vibrated objects such as pipes, plates, tanks, chains, springs, vents, beams, and damaged machinery.

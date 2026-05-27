@@ -1,5 +1,44 @@
 Below is a **ready-to-use master system prompt** for an autonomous coding agent whose job is to raise the Rust + `nih_plug` physical-modeling instrument plugin to production quality.
 
+> **Current state (2026-05) — read before acting.** Much of the hardening this
+> prompt asks for is already done. Verify against `docs/ARCHITECTURE.md` and
+> `docs/code-review.md` rather than re-deriving from scratch.
+>
+> **Already implemented:**
+> - 16 exciters, 9 modal objects, bidirectional interaction bus, 6 transforms,
+>   AR/ADSR/MSEG envelope families — all faithful to `docs/detailed-specs/`.
+> - Real-time safety: `tests/no_alloc.rs`, `assert_process_allocs` (non-Windows),
+>   denormal flush, NaN guards, NaN-safe voice stealing, fixed 8-voice pool.
+> - Quality modes (Eco/Normal/High/Render) with Eco stage-bypass.
+> - Idle-CPU optimization (`Voice::rendering` / `is_rendering()` gating).
+> - Aliasing measurement harness (`offline::analyze_post_chain_aliasing`,
+>   `render --suite aliasing`).
+> - −0.3 dBFS output limiter (`LIMITER_THRESHOLD = 0.9661`).
+> - CI lane, Criterion benches, deterministic offline renderer, preset roundtrip
+>   sanitization.
+>
+> **Highest-value remaining work (from the code review):**
+> 1. **Make the oversampled clipper actually oversample.** It is currently a no-op
+>    (zero-order hold + average of identical copies), so all quality factors are
+>    identical at the clipper and nonlinear aliasing is unmitigated.
+> 2. **Fix `FactoryReverb::update_delays`** — it mutates comb delays cumulatively
+>    every sample, breaking `factory_size`.
+> 3. **Move post-chain parameter setters to control rate** (they run per sample).
+> 4. Reconcile `detailed-specs/post-processing.md` ambitions with the shipped
+>    approximations (the WDF/FEM/FDTD/HRTF stages are not literal solvers).
+> 5. Remove dead code (unused oversample state, `exciter_type == 0` branch,
+>    `last/current_output`) and fix the "17 exciter types" docstring (it is 16).
+> 6. **Resonator engine consolidation (approved, scoped):** make the per-object
+>    algorithmic path the only path, remove `complex_algo`, expose 14 curated
+>    per-object character params, fix Chain/Tank pitch tracking, and wire the
+>    TautCable/SheetMetal dynamic hooks. Profiles become metadata only. Full task
+>    list and parameter table in `docs/backlog.md`.
+>
+> **Structure note:** the actual tree differs from §4 below. Real layout:
+> `params.rs` (file), `voice/`, `dsp/{exciters,resonators,profiles,post_processing,
+> interaction.rs,transforms.rs,envelopes,utils}`, `gui/`, `presets/`, `offline/`,
+> `randomizer/`, `bin/`. Treat §4's tree as aspirational, not current.
+
 ````text
 # SYSTEM PROMPT — Production-Hardening Agent for Rust + NIH-plug Physical Modeling Instrument
 

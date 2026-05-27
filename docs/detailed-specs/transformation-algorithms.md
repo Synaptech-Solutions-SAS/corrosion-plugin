@@ -1,3 +1,12 @@
+> **Implementation status (2026-05): IMPLEMENTED, faithful.** All six transforms
+> (Size, Rust, Damage, Thickness, Heat, Sludge) plus the velocity-expressiveness
+> pass ship in `src/dsp/profile.rs` (`scaled_for_size`, `corroded`, `thickened`,
+> `heated`, `sludge_loaded`, `damaged`) operating on bounded newtypes in
+> `src/dsp/transforms.rs`. The formulas below match the code closely (e.g. heat
+> `·(1 − heat·0.05)`, sludge mass loading `·√(1/(1+sludge))`). Damage mode-splitting
+> happens in the profile; the amplitude-gated rattle injection happens in the voice.
+> Transforms are applied at note-on and fixed for the note. See `docs/ARCHITECTURE.md` §8.
+
 Transformations are where a physical modeling synth truly comes alive. Unlike a standard EQ or pitch-shifter, physical transformations alter the intrinsic physics of the object. 
 
 To achieve the "Damage character pass" and "Velocity expressiveness pass" you outlined, we need to move beyond static values and introduce non-linear, amplitude-dependent behaviors. I have mathematically defined your existing transformations and added three highly industrial new ones: **Thickness (Gauge)**, **Heat (Thermal Expansion)**, and **Sludge (Fluid Viscosity)**.

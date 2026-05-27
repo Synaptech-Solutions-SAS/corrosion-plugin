@@ -1,3 +1,11 @@
+> **Implementation status (2026-05): IMPLEMENTED, faithful.** The interaction bus
+> (`src/dsp/interaction.rs`) implements per-mode strike coefficients
+> `c_n(P) = sin((n+1)·π·P)`, the `fundamental_anchor` minimum-coefficient clamp,
+> the `coupling_stiffness` feed-forward↔weighted blend, bounded `position_wander`,
+> and displacement/velocity feedback into the exciter. The 6-stage MSEG and the
+> AR/ADSR/MSEG family split described later in this file are implemented in
+> `src/dsp/envelopes/mod.rs` and `src/voice/mod.rs`. See `docs/ARCHITECTURE.md` §§6–7.
+
 The interaction between the exciter and the resonator is the absolute core of physical modeling. It is the "glue" that turns isolated mathematical equations into a playable instrument. 
 
 In modal synthesis, you do not just pipe audio from an exciter into a resonator like an effect plugin. Instead, they interact mechanically by exchanging three variables every single sample: **Force ($F$)**, **Displacement ($x$)**, and **Velocity ($v$)**.
