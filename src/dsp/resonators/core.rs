@@ -74,8 +74,6 @@ struct AlgorithmTransformControls {
     thickness_amount: crate::dsp::ThicknessAmount,
     heat_amount: crate::dsp::HeatAmount,
     sludge_amount: crate::dsp::SludgeAmount,
-    damping: f32,
-    brightness: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -113,6 +111,12 @@ pub struct SecondOrderMode {
     /// (cable tension drop, sheet-metal warp) scale from a fixed base instead
     /// of compounding their own prior output.
     base_frequency_hz: f32,
+    /// Note-on decay before damping/brightness are applied; lets held-note
+    /// damping automation re-derive `spec.decay_seconds` instead of compounding.
+    base_decay_seconds: f32,
+    /// Note-on gain before damping/brightness are applied; mirror of
+    /// `base_decay_seconds` for brightness automation.
+    base_gain: f32,
     coefficients: ResonatorCoefficients,
     cached_sample_rate: Option<u32>,
     y1: f32,
@@ -125,6 +129,8 @@ impl SecondOrderMode {
         Self {
             spec,
             base_frequency_hz: spec.frequency_hz,
+            base_decay_seconds: spec.decay_seconds,
+            base_gain: spec.gain,
             coefficients: ResonatorCoefficients::for_mode(spec, 48_000),
             cached_sample_rate: None,
             y1: 0.0,
@@ -137,6 +143,28 @@ impl SecondOrderMode {
     /// Used by the per-sample dynamic hooks. Allocation-free.
     pub fn set_frequency(&mut self, frequency_hz: f32, sample_rate: u32) {
         self.spec.frequency_hz = frequency_hz;
+        self.coefficients = ResonatorCoefficients::for_mode(self.spec, sample_rate);
+        self.cached_sample_rate = Some(sample_rate);
+    }
+
+    /// Re-derive `decay_seconds`/`gain` from the note-on base values using new
+    /// damping/brightness scalars, then rebuild coefficients. Allocation-free.
+    ///
+    /// Mirrors `ModalModeSpec::adjusted_for_controls` so live automation
+    /// matches what would have happened if the same controls were captured at
+    /// note-on.
+    pub fn set_damping_brightness(
+        &mut self,
+        damping: f32,
+        brightness: f32,
+        mode_weight: f32,
+        sample_rate: u32,
+    ) {
+        let damping_scale = (1.0 + (0.5 - damping.clamp(0.0, 1.0)) * 1.2).max(0.1);
+        let brightness_tilt =
+            1.0 + (brightness.clamp(0.0, 1.0) - 0.5) * (0.5 + 1.0 * mode_weight);
+        self.spec.decay_seconds = (self.base_decay_seconds * damping_scale).max(f32::EPSILON);
+        self.spec.gain = (self.base_gain * brightness_tilt.max(0.1)).max(f32::EPSILON);
         self.coefficients = ResonatorCoefficients::for_mode(self.spec, sample_rate);
         self.cached_sample_rate = Some(sample_rate);
     }
@@ -176,14 +204,16 @@ pub struct ModalResonator {
     pub(crate) sludge_amount: crate::dsp::SludgeAmount,
     pub(crate) modes: Vec<SecondOrderMode>,
     interaction_bus: crate::dsp::BidirectionalInteractionBus,
-    last_output: f32,
-    current_output: f32,
     /// Per-sample dynamic behavior (cable/sheet); `None` for static objects.
     dynamics: Dynamics,
     /// Smoothed running amplitude estimate driving the cable tension drop.
     dyn_amplitude: f32,
     /// Smoothed low-frequency displacement driving the sheet-metal warp.
     dyn_lf_displacement: f32,
+    /// Multiplicative pitch-bend factor applied on top of mode base frequencies.
+    /// `1.0` is neutral; written by `set_pitch_bend_factor` from MIDI pitch bend
+    /// or poly tuning events. Layered with object dynamics in `apply_dynamics`.
+    pitch_bend_factor: f32,
 }
 
 impl ModalResonator {
@@ -211,11 +241,10 @@ impl ModalResonator {
             sludge_amount: crate::dsp::SludgeAmount::default(),
             modes,
             interaction_bus,
-            last_output: 0.0,
-            current_output: 0.0,
             dynamics,
             dyn_amplitude: 0.0,
             dyn_lf_displacement: 0.0,
+            pitch_bend_factor: 1.0,
         }
     }
 
@@ -227,20 +256,13 @@ impl ModalResonator {
         let mut transformed = Vec::new();
 
         for (index, mode) in modes.drain(..).enumerate() {
-            let mode_weight = if mode_count <= 1 {
-                0.0
-            } else {
-                index as f32 / (mode_count - 1) as f32
-            };
             let rusted = mode.corroded(controls.rust_amount, index, mode_count);
             let thickened = rusted.thickened(controls.thickness_amount, index);
             let heated = thickened.heated(controls.heat_amount);
             let sludge_loaded = heated.sludge_loaded(controls.sludge_amount);
             let damaged = sludge_loaded.damaged(controls.damage_amount, index, mode_count);
 
-            transformed.extend(damaged.into_iter().map(|expanded| {
-                expanded.adjusted_for_controls(controls.damping, controls.brightness, mode_weight)
-            }));
+            transformed.extend(damaged);
         }
 
         transformed
@@ -250,6 +272,9 @@ impl ModalResonator {
     /// curated character controls. The profile tables now contribute only
     /// `mode_count` (budget/test metadata); they no longer drive the sound.
     ///
+    /// `mode_count_scale` multiplies the base mode count; QualityMode supplies
+    /// 0.5/1.0/1.5/2.0 so Eco runs leaner banks and Render builds richer ones.
+    ///
     /// Returns the raw modes plus any per-sample dynamic behavior the object
     /// retains (cable tension drop, sheet-metal warp).
     fn generate_algorithm_modes(
@@ -257,10 +282,17 @@ impl ModalResonator {
         size_scale: crate::dsp::SizeScale,
         target_frequency_hz: f32,
         character: CharacterParams,
+        mode_count_scale: f32,
     ) -> (Vec<crate::dsp::ModalModeSpec>, Dynamics) {
-        let mode_count = crate::dsp::ModalProfile::from_id(profile_id)
+        let base = crate::dsp::ModalProfile::from_id(profile_id)
             .mode_count()
             .max(1);
+        let scale = if mode_count_scale.is_finite() && mode_count_scale > 0.0 {
+            mode_count_scale.clamp(0.25, 4.0)
+        } else {
+            1.0
+        };
+        let mode_count = ((base as f32 * scale).round() as usize).max(1);
 
         match profile_id {
             crate::dsp::ModalProfileId::Pipe => {
@@ -389,11 +421,10 @@ impl ModalResonator {
             sludge_amount,
             modes,
             interaction_bus,
-            last_output: 0.0,
-            current_output: 0.0,
             dynamics: Dynamics::None,
             dyn_amplitude: 0.0,
             dyn_lf_displacement: 0.0,
+            pitch_bend_factor: 1.0,
         }
     }
 
@@ -515,9 +546,15 @@ impl ModalResonator {
         damping: f32,
         brightness: f32,
         character: CharacterParams,
+        mode_count_scale: f32,
     ) -> Self {
-        let (raw_modes, dynamics) =
-            Self::generate_algorithm_modes(profile_id, size_scale, target_frequency_hz, character);
+        let (raw_modes, dynamics) = Self::generate_algorithm_modes(
+            profile_id,
+            size_scale,
+            target_frequency_hz,
+            character,
+            mode_count_scale,
+        );
         let transformed = Self::transform_algorithm_modes(
             raw_modes,
             AlgorithmTransformControls {
@@ -526,11 +563,13 @@ impl ModalResonator {
                 thickness_amount,
                 heat_amount,
                 sludge_amount,
-                damping,
-                brightness,
             },
         );
-        Self::from_mode_specs(profile_id, transformed, dynamics)
+        // Damping/brightness are kept off `base_decay_seconds`/`base_gain` so
+        // held-note automation can re-derive them; apply them here at note-on.
+        let mut resonator = Self::from_mode_specs(profile_id, transformed, dynamics);
+        resonator.set_live_resonator_controls(damping, brightness, 48_000);
+        resonator
     }
 }
 
@@ -566,6 +605,27 @@ pub trait ResonatorCore {
 }
 
 impl ModalResonator {
+    /// Apply live damping/brightness updates to every mode.
+    ///
+    /// Modes keep their note-on `base_decay_seconds` / `base_gain`; this method
+    /// re-derives `spec.decay_seconds` / `spec.gain` and rebuilds biquad
+    /// coefficients in place. Allocation-free; intended to be called once per
+    /// buffer from the host layer for held-note automation.
+    pub fn set_live_resonator_controls(&mut self, damping: f32, brightness: f32, sample_rate: u32) {
+        let mode_count = self.modes.len();
+        if mode_count == 0 {
+            return;
+        }
+        for (index, mode) in self.modes.iter_mut().enumerate() {
+            let mode_weight = if mode_count <= 1 {
+                0.0
+            } else {
+                index as f32 / (mode_count - 1) as f32
+            };
+            mode.set_damping_brightness(damping, brightness, mode_weight, sample_rate);
+        }
+    }
+
     /// Update interaction parameters from the voice layer.
     pub fn set_interaction_params(
         &mut self,
@@ -592,14 +652,17 @@ impl ModalResonator {
     }
 
     /// Apply the object's per-sample dynamic pitch behavior, recomputing the
-    /// affected mode coefficients from their immutable base frequency. No-op
-    /// for static objects. Allocation-free.
+    /// affected mode coefficients from their immutable base frequency. Layers
+    /// the current `pitch_bend_factor` on top so MIDI pitch bend tracks the
+    /// dynamic shift. No-op for static objects without active pitch bend.
+    /// Allocation-free.
     fn apply_dynamics(&mut self, sample_rate: u32) {
-        let factor = match &self.dynamics {
-            Dynamics::None => return,
+        let dyn_factor = match &self.dynamics {
+            Dynamics::None => 1.0,
             Dynamics::TautCable(inst) => inst.dynamic_pitch_factor(self.dyn_amplitude),
             Dynamics::SheetMetal(inst) => inst.warp_factor(self.dyn_lf_displacement),
         };
+        let factor = dyn_factor * self.pitch_bend_factor;
         if !factor.is_finite() {
             return;
         }
@@ -611,7 +674,38 @@ impl ModalResonator {
 
     #[inline]
     fn has_dynamics(&self) -> bool {
-        !matches!(self.dynamics, Dynamics::None)
+        // The dynamics-aware sample path is hot enough that we only re-enter it
+        // when there is a real-time pitch effect to apply: a cable/sheet hook,
+        // or a non-unity pitch bend factor.
+        !matches!(self.dynamics, Dynamics::None) || (self.pitch_bend_factor - 1.0).abs() > 1e-6
+    }
+
+    /// Apply a multiplicative pitch-bend factor to the modal bank and rebuild
+    /// coefficients once. Routed from `Voice::set_pitch_bend` so MIDI pitch bend
+    /// and poly tuning can re-pitch a held note without re-allocating modes.
+    pub fn set_pitch_bend_factor(&mut self, factor: f32, sample_rate: u32) {
+        if !factor.is_finite() || factor <= 0.0 {
+            return;
+        }
+        let factor = factor.clamp(0.25, 4.0);
+        if (factor - self.pitch_bend_factor).abs() < 1e-6 {
+            return;
+        }
+        self.pitch_bend_factor = factor;
+        // For static objects there is no per-sample apply_dynamics callback, so
+        // rebuild biquads here. For dynamic objects the next sample will pick
+        // it up via apply_dynamics — but doing the rebuild once now keeps the
+        // response immediate.
+        for mode in &mut self.modes {
+            let base = mode.base_frequency_hz;
+            mode.set_frequency(base * factor, sample_rate);
+        }
+    }
+
+    /// Current multiplicative pitch-bend factor (1.0 = no bend).
+    #[inline]
+    pub fn pitch_bend_factor(&self) -> f32 {
+        self.pitch_bend_factor
     }
 
     /// Update the smoothed amplitude / low-frequency estimates that drive the
@@ -635,8 +729,6 @@ impl ModalResonator {
 
 impl ResonatorCore for ModalResonator {
     fn process_sample(&mut self, excitation: f32, sample_rate: u32) -> f32 {
-        self.last_output = self.current_output;
-
         self.interaction_bus.update();
         let coupling = self
             .interaction_bus
@@ -679,7 +771,6 @@ impl ResonatorCore for ModalResonator {
             self.track_dynamic_state(amp_sum, lf_sum);
         }
 
-        self.current_output = mode_sum;
         self.interaction_bus.state.resonator_velocity =
             interaction_displacement - self.interaction_bus.state.resonator_displacement;
         self.interaction_bus.state.resonator_displacement = interaction_displacement;
@@ -708,7 +799,6 @@ impl ResonatorCore for ModalResonator {
             return (0.0, 0.0);
         }
 
-        self.last_output = self.current_output;
         self.interaction_bus.update();
         let coupling = self
             .interaction_bus
@@ -760,7 +850,6 @@ impl ResonatorCore for ModalResonator {
             self.track_dynamic_state(amp_sum, lf_sum);
         }
 
-        self.current_output = (left_sum + right_sum) * 0.5;
         self.interaction_bus.state.resonator_velocity =
             interaction_displacement - self.interaction_bus.state.resonator_displacement;
         self.interaction_bus.state.resonator_displacement = interaction_displacement;

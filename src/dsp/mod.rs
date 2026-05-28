@@ -21,12 +21,12 @@ pub use exciters::{
     HeavyGrinding, MetalChain, MetalPipe, ParticleRain, PneumaticJet, StiffPointScrape,
     TensionRise, TensionSnap, WireBrush,
 };
-pub use interaction::{
-    mode_coefficient_1d, mode_coefficient_2d, BidirectionalInteractionBus, InteractionState,
-};
+pub use interaction::{mode_coefficient_1d, BidirectionalInteractionBus, InteractionState};
+pub use post_processing::lookahead_limiter::LOOKAHEAD_SAMPLES as LOOKAHEAD_LIMITER_SAMPLES;
 pub use post_processing::{
-    FactoryReverb, FemBodyResonator, HrtfSpread, LorenzDrive, OversampledClipper,
-    PostProcessingChain, PostQualityMode, SpaceMode, SpringReverb, WdfLadderFilter,
+    FactoryReverb, FemBodyResonator, HrtfSpread, LookaheadLimiter, LorenzDrive,
+    OversampledClipper, PostProcessingChain, PostQualityMode, SpaceMode, SpringReverb,
+    WdfLadderFilter,
 };
 pub use profile::{ModalModeSpec, ModalProfile, ModalProfileId};
 pub use resonators::{

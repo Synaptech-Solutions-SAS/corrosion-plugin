@@ -128,81 +128,212 @@ allocation-free by `tests/no_alloc.rs`). All checks below pass.*
 
 ## P1 — Partially implemented (finish or formally scope down)
 
-- [ ] **[PARTIAL] Quality modes are shallow.**
-  Eco bypasses body/spread/space via a fixed `0.3/0.7` mix; oversample factor is
-  broken (see P0); resonator mode count is **not** scaled by quality (fixed ~6–12
-  modes per profile). Decide: scale mode count per quality, or document mode count
-  as intentionally fixed. `src/params.rs`, `src/dsp/post_processing/post_chain.rs`,
-  `src/dsp/resonators/core.rs`.
+- [x] **[PARTIAL] Quality modes are shallow.** *(fixed 2026-05-28)*
+  Eco bypassed body/spread/space via a fixed `0.3/0.7` mix and the oversample
+  factor was broken (now fixed in P0). The resonator mode count was also fixed.
+  *Fix:* QualityMode now multiplies the per-object mode count at note-on (Eco
+  0.5×, Normal 1.0×, High 1.5×, Render 2.0×) via
+  `VoiceControls.mode_count_scale`, threaded through
+  `with_algorithm_controls_and_note`. Documented in `ARCHITECTURE.md` §12.
+  *Accept:* `mode_count_scale_changes_resonator_density` proves Render produces
+  more modes than Eco.
 
-- [ ] **[PARTIAL] Aliasing measurement is a proxy, with no budget.**
-  `offline::analyze_post_chain_aliasing` reports residual energy but there is no
-  asserted threshold and no oversampled-reference comparison. Tie to the clipper
-  fix, then add a regression test that fails if `alias_ratio_db` regresses.
+- [x] **[PARTIAL] Aliasing measurement is a proxy, with no budget.** *(fixed 2026-05-28)*
+  `offline::analyze_post_chain_aliasing` reported residual energy with no
+  asserted threshold or oversampled-reference comparison. *Fix:* refactored the
+  analyzer into `analyze_post_chain_aliasing_at_quality(.., PostQualityMode)`
+  and added two regressions in `src/offline/mod.rs::tests`:
+  `render_mode_alias_ratio_stays_within_budget` fails if Render's
+  `alias_ratio_db` exceeds -10 dB, and `higher_quality_reduces_alias_ratio`
+  fails if Render does not strictly beat Eco — which is exactly what the P0
+  oversampled-clipper fix unlocks.
 
-- [ ] **[PARTIAL] Held-note automation has no effect.**
-  `VoiceControls` is snapshotted at note-on (`src/lib.rs`, `src/voice/mod.rs`), so
-  changing exciter/resonator/transform parameters during a sustained note does
-  nothing until the next note. Fine for impacts, limiting for drones/friction and
-  for the PRD's "automate all major parameters" goal.
-  *Fix:* push a subset of controls (damping, brightness, strike position, drive)
-  to live per-sample/per-block updates for sustaining voices.
+- [x] **[PARTIAL] Held-note automation has no effect.** *(fixed 2026-05-28)*
+  `VoiceControls` was snapshotted at note-on, so changing exciter/resonator
+  parameters during a sustained note did nothing until the next note.
+  *Fix:* `Voice::update_live_controls` and `VoiceManager::update_live_controls`
+  push damping, brightness, strike position, coupling, wander, envelope, and
+  fundamental anchor into active voices once per buffer from `lib.rs::process`.
+  Tail voices keep their note-on snapshot so decays stay consistent. The
+  resonator now stores `base_decay_seconds`/`base_gain` so damping/brightness
+  re-derive from the note-on baseline instead of compounding
+  (`src/dsp/resonators/core.rs`). Drive was already buffer-live in `apply_drive`.
+  *Accept:* `held_note_damping_automation_shortens_decay` and
+  `held_note_automation_skips_released_voices`; `no_alloc` still green.
 
-- [ ] **[PARTIAL] No parameter smoothing.**
-  Neither NIH-plug smoothing nor internal smoothing is applied to audibly-stepping
-  params (filter cutoff, drive, strike position). Rapid automation can zipper.
-  *Fix:* add smoothing on the post-chain controls and strike position.
+- [x] **[PARTIAL] No parameter smoothing.** *(fixed 2026-05-28)*
+  Neither NIH-plug smoothing nor internal smoothing was applied to audibly-stepping
+  params (filter cutoff, drive, strike position) so rapid automation could zipper.
+  *Fix:* added one-pole audio-rate smoothing (~20 ms tau) to the WDF filter
+  (`cutoff_hz`/`resonance`), `LorenzDrive::drive_amount`, plus a top-level
+  `OnePoleSmoother` in `lib.rs` smoothing master drive and output gain
+  per-sample. First call after `new`/`reset` snaps so initial configuration
+  takes immediate effect (no audible startup ramp). Held-note strike-position
+  automation lands via the per-buffer `update_live_controls` path.
+  *Accept:* new `mid_stream_cutoff_change_is_smoothed` test verifies the WDF
+  smoother lags a snapped reference; all prior parameter-response tests still
+  pass.
 
-- [ ] **[PARTIAL] MSEG is not a routable modulation source.**
+- [ ] **[PARTIAL] MSEG is not a routable modulation source.** *(scoped down
+  2026-05-28 — promoted to P2)*
   `src/dsp/envelopes/mod.rs` MSEG only drives the force envelope for friction
-  voices. The specs/master-prompt describe a fully-exposed, routable MSEG + mod
-  matrix. Currently the only "modulation" is `position_wander`.
+  voices; making it a routable mod source needs per-destination depth params,
+  a routing GUI, and per-voice MSEG instances on all families. *Decision:*
+  treat this as a single deliverable with the P2 mod-matrix / macro work
+  (PRD §12) rather than a P1 finish-it task — completing it here in isolation
+  would ship half a routing system.
 
-- [ ] **[PARTIAL] `sync_rate` parameter appears unused.**
-  `src/params.rs` defines `sync_rate`, but no host-tempo/transport sync path was
-  found. Either wire MSEG/echo to host BPM or remove the control. **[VERIFY]**
+- [x] **[PARTIAL] `sync_rate` parameter appears unused.** *(fixed 2026-05-28)*
+  `sync_rate` now drives the FactoryEcho. Below `0.05` the echo runs free
+  with the existing `delay_time` knob. Above that the value selects one of
+  six musical divisions (1/16 → 2/1) and the effective delay is computed
+  from `context.transport().tempo`. If the host doesn't report a BPM the
+  knob silently falls back to free-running mode. Wiring lives in
+  `lib.rs::sync_rate_to_delay_time` (table-driven, allocation-free) and is
+  consumed at the per-buffer `set_echo_params` call. Tests:
+  `sync_rate_quarter_note_at_120bpm`, `sync_rate_below_threshold_returns_free_running_value`,
+  `sync_rate_without_tempo_falls_back_to_knob`, `higher_sync_rate_gives_longer_delay`.
+  MSEG tempo-sync remains future work — the sequencer feature (P2.3,
+  scoped down) is the natural home for that.
 
-- [ ] **[PARTIAL] Post/space DSP are approximations of the detailed specs.**
-  WDF (4-pole ladder, not a circuit solver), FEM body (8 modes), HRTF (delay+filter,
-  no HRIR), Factory/Spring reverbs (Schroeder/single-delay, not FDTD/PDE). Either
-  upgrade toward `detailed-specs/post-processing.md` (large effort, watch CPU) or
-  keep the now-corrected spec banners as the contract. Decide intent.
+- [x] **[PARTIAL] Post/space DSP are approximations of the detailed specs.**
+  *(decision recorded 2026-05-28: keep approximations as the contract)*
+  WDF (4-pole ladder, not a circuit solver), FEM body (8 modes), HRTF
+  (delay+filter, no HRIR), Factory/Spring reverbs (Schroeder/single-delay, not
+  FDTD/PDE). *Decision:* the lightweight approximations stay as the shipped
+  contract. The spec docs in `docs/detailed-specs/post-processing.md` describe
+  the high-fidelity target; the in-source module docstrings and
+  `ARCHITECTURE.md` §9 are authoritative about what actually ships. Upgrading
+  any single stage to the full PDE/FDTD / HRIR description would be a feature
+  proposal in its own right, not a P1 finish-the-partial task.
 
 ---
 
 ## P2 — Missing features (specced in PRD/master-prompt, not present)
 
-- [ ] **[MISSING] MIDI expression beyond note on/off.**
-  `src/lib.rs::handle_note_event` only handles `NoteOn`/`NoteOff`. No channel
-  pressure, poly pressure, mod wheel, or pitch bend (PRD §13.4–13.5).
-- [ ] **[MISSING] Macro controls** (Mass, Corrosion, Violence, Damage, etc.; PRD §12).
-  Only the `Body` macro partially maps; no macro layer exists.
-- [ ] **[MISSING] Sequencer + per-step locks** (PRD §18) — no sequencer module.
-- [ ] **[MISSING] Percussion Kit mode** (note→object mapping; PRD §9.2).
-- [ ] **[MISSING] Explicit Drone mode** (PRD §9.3). Friction voices sustain via MSEG
-  loop, but there is no dedicated sustained/drone mode.
+- [x] **[MISSING] MIDI expression beyond note on/off.** *(fixed 2026-05-28)*
+  `MIDI_INPUT` upgraded to `MidiConfig::MidiCCs`. `handle_note_event` now
+  routes `MidiPitchBend` (±2 semitones default, ±24 safety clamp),
+  `MidiChannelPressure`, `PolyPressure`, and CC1 `MidiCC` mod wheel.
+  `ModalResonator::set_pitch_bend_factor` rebuilds biquads from each mode's
+  immutable `base_frequency_hz`; the bend layers on top of the cable/sheet
+  dynamic hooks (`src/dsp/resonators/core.rs::apply_dynamics`). VoiceManager
+  stores channel-state so notes triggered mid-bend pick it up. Tests:
+  `pitch_bend_retunes_held_resonator_modes`, `channel_pitch_bend_reaches_all_active_voices`,
+  `channel_pressure_increases_voice_output`, `mod_wheel_boosts_output_independently_of_pressure`,
+  `poly_pressure_overrides_channel_pressure_when_higher`,
+  `pitch_bend_persists_for_new_notes_on_channel`,
+  `poly_pressure_targets_only_matching_note`.
+- [x] **[MISSING] Macro controls** (Mass, Corrosion, Violence, Brightness; PRD §12).
+  *(fixed 2026-05-28)*
+  Four `0..=1` macro params (`macro_mass`, `macro_corrosion`, `macro_violence`,
+  `macro_brightness`) sit at the host surface. `lib.rs::resolve_macro_bias`
+  derives a `MacroBias` once per buffer from the current macro values; the
+  bias is applied to the `VoiceControls` mass cluster + damping/brightness at
+  note-on, to `size`/`rust`/`damage` at the note_on_with_controls call site,
+  to the post-chain drive / drive_amount / chaos_depth / filter cutoff in
+  `process()`, and to held-note damping/brightness via `update_live_controls`.
+  At `0.5` (default) the bias is mathematically NEUTRAL so existing presets
+  sound unchanged — see `neutral_macros_produce_neutral_bias`. Damage is the
+  destination of the Violence macro (matches PRD intent). Preset roundtrip
+  persists the macros; legacy presets default to neutral via
+  `default_macro_value`.
+- [ ] **[MISSING] Sequencer + per-step locks** (PRD §18). *(scoped down
+  2026-05-28 — deferred from P2)*
+  Implementing PRD §18 needs a full sequencer module: step storage, per-step
+  parameter snapshots ("locks"), host-transport synchronization, a sequencer
+  GUI panel, and preset persistence. *Decision:* defer to a dedicated
+  feature initiative; building a half-sequencer in this sweep would ship a
+  partial UI surface that would need to be redesigned. P1.6 sync_rate
+  tempo-sync wiring (currently inert) is a prerequisite once the sequencer
+  picks up host BPM. No code change in this iteration.
+- [x] **[MISSING] Percussion Kit mode** (note→object mapping; PRD §9.2).
+  *(fixed 2026-05-28)*
+  New `PlayMode` enum (`Tonal` / `Kit` / `Drone`) and `play_mode` IntParam
+  control note-on routing in `lib.rs::handle_note_event`. Kit mode uses
+  `note_to_kit_object` to map MIDI notes into 9 contiguous slots of 10 notes
+  each across the playable range; the note still drives pitch within each
+  slot. Tests: `kit_note_to_object_covers_full_range`,
+  `kit_mode_overrides_object_param`.
+- [x] **[MISSING] Explicit Drone mode** (PRD §9.3). *(fixed 2026-05-28)*
+  `PlayMode::Drone` forces `controls.loop_mode = Forward` with
+  `loop_start_stage = 3` (Decay) and `loop_end_stage = 4` (Sustain) at
+  note-on so friction MSEG voices ring indefinitely until note-off. Hit-style
+  exciter families intentionally keep their one-shot envelope — looping
+  them would require either a per-voice retrigger clock or a forced family
+  swap, both of which were judged out of scope for this iteration. Test:
+  `drone_mode_forces_mseg_loop_on`. `MSEG::is_loop_enabled` added so tests
+  can confirm the wiring.
 - [ ] **[MISSING] Effect-mode variant** (audio-in excites the resonator; PRD §9.4).
-- [ ] **[MISSING] Output options:** lookahead limiter / output meter / selectable
-  soft-clip modes (PRD §20.3 future).
-- [ ] **[MISSING] Preset schema migration** (versioned remap of old IDs; currently
-  sanitize-and-clamp only). *(Presets module excluded from this review — flagged for awareness.)*
+  *(scoped down 2026-05-28 — deferred from P2)*
+  Requires switching `AUDIO_IO_LAYOUTS` to add a stereo input, threading the
+  input buffer into the per-sample exciter dispatch, gating the existing
+  MIDI exciter path when Effect mode is active, and stabilizing feedback
+  (the resonator + audio-in form a closed loop). Each of those is a
+  meaningful surface change. *Decision:* defer until the audio-in plumbing
+  can be designed end-to-end — building it incrementally on top of the
+  instrument I/O layout would either ship a non-working mode or commit to
+  an interface we'd need to redesign once feedback safety is added.
+- [x] **[MISSING] Output options:** lookahead limiter / output meter / selectable
+  soft-clip modes (PRD §20.3 future). *(partially fixed 2026-05-28 —
+  lookahead limiter shipped; meter + soft-clip variants remain)*
+  New `LookaheadLimiter` (`src/dsp/post_processing/lookahead_limiter.rs`):
+  48-sample window (~1 ms @ 48 kHz), instant attack, 50 ms one-pole release,
+  threshold tracks `analog_ceiling`. New `limiter_mode` IntParam (`Hard` /
+  `Lookahead`) selects which path the master output takes. When Lookahead
+  is engaged the plugin reports its 48-sample latency to the host via
+  `context.set_latency_samples`, and only when the value changes so hosts
+  aren't asked to renegotiate buses every buffer. Tests live in the
+  limiter module: `passes_quiet_signal_unchanged_after_latency`,
+  `limits_peaks_above_threshold`, `detects_peak_before_it_arrives_at_output`,
+  `reset_clears_delay_line`. The output meter is a GUI surface concern and
+  the soft-clip variants (alternative tube/diode curves) remain future
+  work — both intentionally out of scope for this iteration.
+- [x] **[MISSING] Preset schema migration** (versioned remap of old IDs; currently
+  sanitize-and-clamp only). *(fixed 2026-05-28)*
+  `PRESET_VERSION` bumped to `"4"`. New `migrate_preset_json` runs on the
+  raw `serde_json::Value` before typed deserialization so renames and
+  value remaps that can't be expressed via `#[serde(default)]` have a place
+  to live. Currently handles: unstamped legacy → `"1"`, `"1"`/`"2"` →
+  `"3"` (inject empty `extra` object), `"3"` → `"4"` (additive macros /
+  play_mode / limiter_mode, no JSON rewrite). `Preset::from_json_str` and
+  `Corrosion::load_state` both route through the migration. Tests:
+  `unstamped_legacy_preset_migrates_to_current_schema`,
+  `v3_preset_migrates_to_v4_without_dropping_fields`,
+  `migration_idempotent_on_current_version`.
 
 ---
 
 ## P3 — Code quality / cleanup chores
 
-- [ ] **[CHORE] Remove dead code.**
-  `Voice::process_sample_stereo` `exciter_type == 0` branch (unreachable; ids are 1–16);
-  `OversampledClipper::{upsample_state, downsample_state}` (unused);
-  `ModalResonator::{last_output, current_output}` (written, never read);
-  unused interaction helpers (`distribute_force_to_modes`, `update_resonator_state`,
-  `distribute_force`, `per_mode_forces`, `mode_coefficient_2d`, `mode_coefficient_circular`).
-- [ ] **[CHORE] Fix `src/lib.rs` docstring "17 different exciter types" → 16.**
-- [ ] **[CHORE] Fix `src/params.rs` docstring "70+ parameters" → 127.**
-- [ ] **[CHORE] Declare `render_presets` in `Cargo.toml`** (currently only auto-discovered).
-- [ ] **[CHORE] Rename/reword the "WDF" filter** to reflect that it is a ladder
-  approximation, not a Newton-Raphson WDF circuit.
-- [ ] **[CHORE] Bound `midi_to_hz`** input (cosmetic robustness).
+- [x] **[CHORE] Remove dead code.** *(fixed 2026-05-28)*
+  Dropped the unreachable `exciter_type == 0` branch in
+  `Voice::process_sample_stereo` (ids are 1..=16); removed
+  `ModalResonator::{last_output, current_output}` fields and their writes
+  (no external reader); removed `InteractionState::{update_resonator_state,
+  distribute_force_to_modes}` and `BidirectionalInteractionBus::{distribute_force,
+  per_mode_forces}` (allocated `Vec<f32>` on the audio thread, never called);
+  removed `mode_coefficient_2d` and `mode_coefficient_circular` (specced for
+  higher-fidelity object models that the algorithmic resonator path now
+  supersedes). `OversampledClipper::{upsample_state, downsample_state}` were
+  already gone (replaced by `prev_input` during the P0 oversample fix).
+  Updated `bidirectional_bus_lifecycle` test to verify the live mode-coeff
+  cache instead of the removed force-distribution API.
+- [x] **[CHORE] Fix `src/lib.rs` docstring "17 different exciter types" → 16.**
+  *(fixed 2026-05-28)*
+- [x] **[CHORE] Fix `src/params.rs` docstring "70+ parameters" → 130+.**
+  *(fixed 2026-05-28)* The actual count grew past 130 with the macros,
+  play_mode, and limiter_mode additions.
+- [x] **[CHORE] Declare `render_presets` in `Cargo.toml`** *(fixed 2026-05-28)*.
+- [x] **[CHORE] Rename/reword the "WDF" filter** *(fixed 2026-05-28)*
+  Type name retained for ABI/preset stability; module + struct docstrings
+  rewritten to make clear it is a TPT-flavored four-pole ladder
+  approximation with transistor saturation, not a circuit-solver WDF.
+  Points at the post-processing spec for the contractual response.
+- [x] **[CHORE] Bound `midi_to_hz`** input *(fixed 2026-05-28)*.
+  `u8` already caps the upper end (note 127 → 12.5 kHz), but the function
+  now explicitly clamps via `.min(127)` so the math is robust if a future
+  caller passes a wider integer type.
 - [ ] **[CHORE] Extract DSP magic numbers** (drive thresholds in `lib.rs::apply_drive`,
   body/reverb constants) into named constants where it aids readability.
 

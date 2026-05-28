@@ -7,7 +7,71 @@ use serde::{Deserialize, Serialize};
 use crate::params::{object_param, CorrosionParams, Object};
 use nih_plug::prelude::{util, FloatParam, FloatRange, IntParam, IntRange};
 
-pub const PRESET_VERSION: &str = "3";
+/// Preset schema version. Bumped whenever the JSON shape changes in a way
+/// that requires a migration step beyond what serde defaults can patch.
+///
+/// History:
+/// - "1" / "2" — legacy versions (pre-`extra`); rely on serde defaults.
+/// - "3" — algorithmic resonator engine, character params, quality mode.
+/// - "4" — macros (Mass/Corrosion/Violence/Brightness), play_mode,
+///   limiter_mode. Legacy presets get neutral defaults via the per-field
+///   `#[serde(default = …)]` attributes.
+pub const PRESET_VERSION: &str = "4";
+
+/// Run an in-place JSON migration on a raw preset value so it conforms to
+/// the current schema.
+///
+/// `serde_json::Value` is used (rather than typed deserialization) so we can
+/// rename keys and rewrite values that no longer exist in the typed
+/// `Preset` struct. New additive fields are handled automatically by the
+/// per-field `#[serde(default = …)]` attributes — this function exists for
+/// the breaking changes those defaults can't represent.
+///
+/// Each `match` arm bumps the version of the JSON in place, then the function
+/// re-enters until the version reaches `PRESET_VERSION` (or the input is
+/// already current).
+pub fn migrate_preset_json(mut value: serde_json::Value) -> serde_json::Value {
+    loop {
+        let current_version = value
+            .get("version")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+        match current_version.as_deref() {
+            None | Some("") => {
+                // Legacy presets without a version field are treated as v1.
+                value["version"] = serde_json::Value::String("1".into());
+            }
+            Some("1") | Some("2") => {
+                // Pre-v3 had no `extra` block. Inject an empty object so the
+                // serde defaults populate sensible values on the typed path.
+                if value.get("extra").is_none() {
+                    value["extra"] = serde_json::json!({});
+                }
+                value["version"] = serde_json::Value::String("3".into());
+            }
+            Some("3") => {
+                // v3 → v4 only added new fields (macros, play_mode, limiter_mode);
+                // each has a per-field serde default, so no JSON rewrite is
+                // required. Just bump the stamp.
+                value["version"] = serde_json::Value::String("4".into());
+            }
+            Some(_other) => {
+                // Any version we don't recognize (newer than this build, or a
+                // typo) is left alone — serde will either accept it as v4-shaped
+                // or fail with a clear error.
+                break;
+            }
+        }
+        if value
+            .get("version")
+            .and_then(serde_json::Value::as_str)
+            == Some(PRESET_VERSION)
+        {
+            break;
+        }
+    }
+    value
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -142,6 +206,26 @@ pub struct PresetParameters {
     pub high_frequency_damping: f32,
     pub analog_ceiling: f32,
     pub diode_softness: f32,
+    // Macros (P2.2 — PRD §12). New presets persist these directly; old
+    // presets fall back to the `#[serde(default)]` value at the struct
+    // level, which yields `0.0` — we override that with the neutral 0.5
+    // midpoint in `into_params` so legacy presets sound unchanged.
+    #[serde(default = "default_macro_value")]
+    pub macro_mass: f32,
+    #[serde(default = "default_macro_value")]
+    pub macro_corrosion: f32,
+    #[serde(default = "default_macro_value")]
+    pub macro_violence: f32,
+    #[serde(default = "default_macro_value")]
+    pub macro_brightness: f32,
+    /// Limiter mode (0=Hard, 1=Lookahead). Legacy presets default to Hard so
+    /// they sound identical to the previous behavior on load.
+    #[serde(default)]
+    pub limiter_mode: i32,
+}
+
+fn default_macro_value() -> f32 {
+    0.5
 }
 
 impl Default for PresetParameters {
@@ -283,6 +367,11 @@ impl PresetParameters {
             high_frequency_damping: params.high_frequency_damping.value(),
             analog_ceiling: params.analog_ceiling.value(),
             diode_softness: params.diode_softness.value(),
+            macro_mass: params.macro_mass.value(),
+            macro_corrosion: params.macro_corrosion.value(),
+            macro_violence: params.macro_violence.value(),
+            macro_brightness: params.macro_brightness.value(),
+            limiter_mode: params.limiter_mode.value(),
         }
     }
 
@@ -453,6 +542,11 @@ impl PresetParameters {
         );
         params.analog_ceiling = float_param("Analog Ceiling", self.analog_ceiling, 0.5, 1.0);
         params.diode_softness = float_param("Diode Softness", self.diode_softness, 0.0, 1.0);
+        params.macro_mass = float_param("Mass", self.macro_mass, 0.0, 1.0);
+        params.macro_corrosion = float_param("Corrosion", self.macro_corrosion, 0.0, 1.0);
+        params.macro_violence = float_param("Violence", self.macro_violence, 0.0, 1.0);
+        params.macro_brightness = float_param("Brightness", self.macro_brightness, 0.0, 1.0);
+        params.limiter_mode = crate::params::limiter_mode_param(self.limiter_mode);
     }
 }
 
@@ -495,12 +589,20 @@ pub struct Preset {
     pub body: f32,
     #[serde(default = "default_quality_mode")]
     pub quality_mode: i32,
+    /// Play mode (0=Tonal, 1=Kit, 2=Drone). Defaults to Tonal for legacy
+    /// presets so the existing behavior is preserved on load.
+    #[serde(default = "default_play_mode")]
+    pub play_mode: i32,
     #[serde(default)]
     pub extra: PresetParameters,
 }
 
 fn default_quality_mode() -> i32 {
     1
+}
+
+fn default_play_mode() -> i32 {
+    0 // Tonal
 }
 
 impl Preset {
@@ -518,6 +620,7 @@ impl Preset {
             width: params.width.value(),
             body: params.body.value(),
             quality_mode: params.quality_mode.value(),
+            play_mode: params.play_mode.value(),
             extra: PresetParameters::from_params(params),
         }
     }
@@ -534,6 +637,7 @@ impl Preset {
         params.width = float_param("Width", self.width, -2.0, 3.0);
         params.body = float_param("Body", self.body, 0.0, 5.0);
         params.quality_mode = crate::params::quality_mode_param(self.quality_mode);
+        params.play_mode = crate::params::play_mode_param(self.play_mode);
         self.extra.apply_to(&mut params);
         params
     }
@@ -548,7 +652,17 @@ impl Preset {
 
     pub fn load(path: impl AsRef<Path>) -> io::Result<Self> {
         let json = fs::read_to_string(path)?;
-        let preset: Self = serde_json::from_str(&json).map_err(io::Error::other)?;
+        Self::from_json_str(&json)
+    }
+
+    /// Parse a preset from a JSON string, applying the version migration step
+    /// before typed deserialization. Used both by `load` and by the host
+    /// state-restore path so plugin state and on-disk presets behave the same.
+    pub fn from_json_str(json: &str) -> io::Result<Self> {
+        let raw: serde_json::Value =
+            serde_json::from_str(json).map_err(io::Error::other)?;
+        let migrated = migrate_preset_json(raw);
+        let preset: Self = serde_json::from_value(migrated).map_err(io::Error::other)?;
         Ok(preset.sanitized())
     }
 

@@ -4,7 +4,9 @@
 //! saturation curve to introduce motion without breaking real-time safety.
 /// Chaotic drive processor with Lorenz modulation and tube saturation.
 pub struct LorenzDrive {
+    /// Smoothed drive amount; lags `target_drive_amount` to kill zipper noise.
     drive_amount: f32,
+    target_drive_amount: f32,
     bias_starvation: f32,
     chaos_depth: f32,
 
@@ -17,16 +19,23 @@ pub struct LorenzDrive {
     tube_state: f32,
 
     sample_rate: f32,
+    /// Per-sample one-pole smoother coefficient for `drive_amount`.
+    smoothing_coeff: f32,
+    /// First `set_parameters` snaps; later calls smooth.
+    smoothing_primed: bool,
 }
 
 impl LorenzDrive {
     const SIGMA: f32 = 10.0;
     const BETA: f32 = 8.0 / 3.0;
+    /// One-pole smoother tau in seconds for drive automation.
+    const SMOOTHING_TAU_SECONDS: f32 = 0.02;
 
     /// Creates the drive with neutral settings and stable initial state.
     pub fn new() -> Self {
-        Self {
+        let mut drive = Self {
             drive_amount: 0.0,
+            target_drive_amount: 0.0,
             bias_starvation: 0.0,
             chaos_depth: 0.0,
             x: 0.1,
@@ -34,23 +43,40 @@ impl LorenzDrive {
             z: 0.0,
             tube_state: 0.0,
             sample_rate: 48000.0,
-        }
+            smoothing_coeff: 0.0,
+            smoothing_primed: false,
+        };
+        drive.recompute_smoothing_coeff();
+        drive
     }
 
     /// Sets drive amount, bias starvation, and chaos depth.
     pub fn set_parameters(&mut self, drive: f32, starvation: f32, chaos: f32) {
-        self.drive_amount = drive.clamp(0.0, 5.0);
+        self.target_drive_amount = drive.clamp(0.0, 5.0);
         self.bias_starvation = starvation.clamp(0.0, 1.0);
         self.chaos_depth = chaos.clamp(0.0, 1.0);
+        if !self.smoothing_primed {
+            self.smoothing_primed = true;
+            self.drive_amount = self.target_drive_amount;
+        }
     }
 
     /// Updates the internal integration step for the current sample rate.
     pub fn set_sample_rate(&mut self, sample_rate: f32) {
         self.sample_rate = sample_rate;
+        self.recompute_smoothing_coeff();
+    }
+
+    fn recompute_smoothing_coeff(&mut self) {
+        let sr = self.sample_rate.max(1.0);
+        self.smoothing_coeff = 1.0 - (-1.0 / (Self::SMOOTHING_TAU_SECONDS * sr)).exp();
     }
 
     /// Processes one sample through the chaotic drive path.
     pub fn process(&mut self, input: f32) -> f32 {
+        // Smooth drive automation at audio rate.
+        self.drive_amount +=
+            (self.target_drive_amount - self.drive_amount) * self.smoothing_coeff;
         if self.drive_amount < 0.001 {
             return input;
         }
@@ -107,6 +133,7 @@ impl LorenzDrive {
         self.y = 0.0;
         self.z = 0.0;
         self.tube_state = 0.0;
+        self.smoothing_primed = false;
     }
 }
 

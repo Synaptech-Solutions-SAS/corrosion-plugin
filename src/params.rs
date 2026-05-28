@@ -6,7 +6,7 @@
 //!
 //! ## Parameter Categories
 //!
-//! The 70+ parameters are organized into logical groups:
+//! The 130+ parameters are organized into logical groups:
 //!
 //! ### Sound Generation
 //! - **Exciter** (exciter) - Type of excitation model
@@ -100,6 +100,18 @@ pub struct CorrosionParams {
     /// Controls CPU/quality tradeoff for post-processing and oversampling.
     #[id = "quality_mode"]
     pub quality_mode: IntParam,
+
+    /// Play mode (0=Tonal, 1=Kit, 2=Drone). Routes the note → object/pitch
+    /// mapping at note-on. See `params::PlayMode` for the semantics.
+    #[id = "play_mode"]
+    pub play_mode: IntParam,
+
+    /// Limiter mode (0=Hard clip, 1=Lookahead). When set to Lookahead the
+    /// master output passes through `LookaheadLimiter` which trades ~1 ms
+    /// latency for transparent peak limiting. Default keeps the
+    /// pre-existing behavior so loading old presets is a no-op.
+    #[id = "limiter_mode"]
+    pub limiter_mode: IntParam,
 
     /// Object size scale (0.05 to 10.0)
     /// Affects pitch (inverse) and decay time (direct)
@@ -212,7 +224,15 @@ pub struct CorrosionParams {
     #[id = "loop_end_stage"]
     pub loop_end_stage: IntParam,
 
-    /// Sync rate for tempo-synced parameters (0.0 to 1.0)
+    /// Sync rate for the tempo-synced echo (0.0 to 1.0).
+    ///
+    /// Below `0.05` the echo runs free with the `delay_time` knob. Above
+    /// that threshold the value selects a discrete musical division
+    /// (1/16 → 2/1 in six bands) and the echo's effective delay is computed
+    /// from the host tempo. If the host does not report a BPM, the knob
+    /// silently falls back to free-running mode. See
+    /// `lib.rs::sync_rate_to_delay_time` for the routing table and
+    /// `docs/BACKLOG.md` → P1.6 for the spec.
     #[id = "sync_rate"]
     pub sync_rate: FloatParam,
 
@@ -721,6 +741,29 @@ pub struct CorrosionParams {
     /// Transition hardness in output clipper
     #[id = "diode_softness"]
     pub diode_softness: FloatParam,
+
+    // Macro Controls (PRD §12)
+    //
+    // Each macro is a normalized `0.0..=1.0` knob with `0.5` as the neutral
+    // point (no DSP change). They layer multiplicative or additive biases on
+    // top of the existing per-parameter controls so a single twist can hit a
+    // related cluster of destinations — see `lib.rs::resolve_macro_voice_bias`
+    // for the routing table.
+    /// Mass macro — biases exciter/resonator weight without losing per-exciter granularity.
+    #[id = "macro_mass"]
+    pub macro_mass: FloatParam,
+
+    /// Corrosion macro — biases rust + damping + brightness loss as a group.
+    #[id = "macro_corrosion"]
+    pub macro_corrosion: FloatParam,
+
+    /// Violence macro — biases drive + chaos + damage together.
+    #[id = "macro_violence"]
+    pub macro_violence: FloatParam,
+
+    /// Brightness macro — biases resonator brightness and filter cutoff together.
+    #[id = "macro_brightness"]
+    pub macro_brightness: FloatParam,
 }
 
 /// Exciter type enumeration for serialization and UI display.
@@ -971,6 +1014,53 @@ impl QualityMode {
     }
 }
 
+/// Play mode for the voice layer (PRD §9.2–9.3).
+///
+/// - **Tonal** — Default. The note picks the pitch; the global `object` param
+///   picks the resonator family.
+/// - **Kit** — Percussion-kit mapping (PRD §9.2). The MIDI note range picks
+///   the object family (10 notes per object across the full keyboard); the
+///   note still drives pitch within each kit slot for tonal variation.
+/// - **Drone** — Sustained mode (PRD §9.3). Forces the MSEG loop on
+///   (decay→sustain) at note-on so friction voices ring indefinitely until
+///   note-off. Hit-style exciter families keep their one-shot envelope so
+///   they aren't silently neutered; explicit drone of those families is
+///   tracked as a future expansion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+pub enum PlayMode {
+    Tonal,
+    Kit,
+    Drone,
+}
+
+impl PlayMode {
+    pub fn from_int(v: i32) -> Self {
+        match v {
+            0 => PlayMode::Tonal,
+            1 => PlayMode::Kit,
+            2 => PlayMode::Drone,
+            _ => PlayMode::Tonal,
+        }
+    }
+
+    pub fn to_int(self) -> i32 {
+        match self {
+            PlayMode::Tonal => 0,
+            PlayMode::Kit => 1,
+            PlayMode::Drone => 2,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            PlayMode::Tonal => "Tonal",
+            PlayMode::Kit => "Kit",
+            PlayMode::Drone => "Drone",
+        }
+    }
+}
+
 /// Resonator object type enumeration.
 ///
 /// Each object has distinct modal characteristics based on physical geometry:
@@ -1095,6 +1185,44 @@ pub fn object_param(default: i32) -> IntParam {
         }))
 }
 
+/// Test-only helper that constructs a plain `FloatParam` with linear range.
+///
+/// Used by integration tests to swap an existing macro / scalar field on a
+/// shared `Arc<CorrosionParams>` (`Arc::get_mut` + field replacement) without
+/// needing to mint the entire struct from scratch.
+#[cfg(test)]
+pub fn float_param_for_test(name: &'static str, value: f32, min: f32, max: f32) -> FloatParam {
+    FloatParam::new(name, value, FloatRange::Linear { min, max })
+}
+
+/// Build the limiter-mode `IntParam` with mappings for Hard / Lookahead.
+pub fn limiter_mode_param(default: i32) -> IntParam {
+    IntParam::new("Limiter Mode", default, IntRange::Linear { min: 0, max: 1 })
+        .with_value_to_string(Arc::new(|value| match value {
+            0 => "Hard".to_string(),
+            1 => "Lookahead".to_string(),
+            _ => "Hard".to_string(),
+        }))
+        .with_string_to_value(Arc::new(|string| match string.trim() {
+            s if s.eq_ignore_ascii_case("hard") => Some(0),
+            s if s.eq_ignore_ascii_case("lookahead") => Some(1),
+            _ => None,
+        }))
+}
+
+/// Build the play-mode `IntParam` with mappings for Tonal/Kit/Drone.
+pub fn play_mode_param(default: i32) -> IntParam {
+    IntParam::new("Play Mode", default, IntRange::Linear { min: 0, max: 2 })
+        .with_value_to_string(Arc::new(|value| PlayMode::from_int(value).name().to_string()))
+        .with_string_to_value(Arc::new(|string| {
+            let normalized = string.trim();
+            [PlayMode::Tonal, PlayMode::Kit, PlayMode::Drone]
+                .into_iter()
+                .find(|mode| mode.name().eq_ignore_ascii_case(normalized))
+                .map(PlayMode::to_int)
+        }))
+}
+
 pub fn quality_mode_param(default: i32) -> IntParam {
     IntParam::new("Quality Mode", default, IntRange::Linear { min: 0, max: 3 })
         .with_value_to_string(Arc::new(|value| {
@@ -1129,7 +1257,7 @@ fn display_float_param(name: &'static str, value: f32, min: f32, max: f32) -> Fl
 impl Default for CorrosionParams {
     /// Creates default parameter values for plugin initialization.
     ///
-    /// Sets sensible defaults for all 70+ parameters to ensure
+    /// Sets sensible defaults for all 130+ parameters to ensure
     /// the plugin produces audible output immediately upon loading.
     fn default() -> Self {
         Self {
@@ -1140,6 +1268,8 @@ impl Default for CorrosionParams {
             exciter: exciter_param(ExciterType::HandStrike.to_int()),
             object: object_param(0), // Pipe
             quality_mode: quality_mode_param(QualityMode::Normal.to_int()),
+            play_mode: play_mode_param(PlayMode::Tonal.to_int()),
+            limiter_mode: limiter_mode_param(0),
 
             // Object transformation defaults
             size: FloatParam::new(
@@ -1630,6 +1760,29 @@ impl Default for CorrosionParams {
             ),
             diode_softness: FloatParam::new(
                 "Diode Softness",
+                0.5,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+
+            // Macro defaults — 0.5 is the neutral midpoint so existing presets
+            // sound unchanged until the user actively dials a macro.
+            macro_mass: FloatParam::new(
+                "Mass",
+                0.5,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            macro_corrosion: FloatParam::new(
+                "Corrosion",
+                0.5,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            macro_violence: FloatParam::new(
+                "Violence",
+                0.5,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            macro_brightness: FloatParam::new(
+                "Brightness",
                 0.5,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             ),

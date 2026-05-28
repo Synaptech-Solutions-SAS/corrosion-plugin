@@ -14,32 +14,11 @@ pub fn mode_coefficient_1d(mode_index: usize, position: f32) -> f32 {
     (n * PI * p).sin()
 }
 
-/// Calculates mode shape coefficient for a 2D plate at position `(Px, Py)`.
-///
-/// For a rectangular plate, the mode shape is
-/// `c_{m,n}(Px, Py) = sin(m * π * Px) * sin(n * π * Py)`.
-pub fn mode_coefficient_2d(mode_m: usize, mode_n: usize, px: f32, py: f32) -> f32 {
-    let px_clamped = px.clamp(0.0, 1.0);
-    let py_clamped = py.clamp(0.0, 1.0);
-    let m = (mode_m + 1) as f32;
-    let n = (mode_n + 1) as f32;
-    (m * PI * px_clamped).sin() * (n * PI * py_clamped).sin()
-}
-
-/// Calculates mode coefficient for circular objects (cog/blade).
-pub fn mode_coefficient_circular(
-    mode_index: usize,
-    angular_position: f32,
-    radius_ratio: f32,
-) -> f32 {
-    let theta = angular_position * 2.0 * PI;
-    let r = radius_ratio.clamp(0.0, 1.0);
-
-    let azimuthal = (mode_index as f32 * theta).cos();
-    let radial = (1.0 - r).powf(0.5);
-
-    azimuthal * radial
-}
+// `mode_coefficient_2d` (rectangular plate) and `mode_coefficient_circular`
+// (cog/blade) were specced for higher-fidelity object models but the
+// algorithmic resonator path generates its own per-mode coefficients today.
+// Removed 2026-05-28 as part of the P3.1 dead-code sweep — re-introduce them
+// alongside the upgraded model if a future feature needs them.
 
 /// Tracks the bidirectional exchange between exciter and resonator.
 #[derive(Clone, Debug)]
@@ -120,31 +99,14 @@ impl InteractionState {
         coefficients
     }
 
-    /// Update the resonator state from per-mode outputs.
-    pub fn update_resonator_state(
-        &mut self,
-        mode_displacements: &[f32],
-        mode_coefficients: &[f32],
-    ) {
-        self.resonator_displacement = mode_displacements
-            .iter()
-            .zip(mode_coefficients.iter())
-            .map(|(y, c)| y * c)
-            .sum();
-    }
-
     /// Set the force calculated by the exciter.
     pub fn set_exciter_force(&mut self, force: f32) {
         self.exciter_force = force;
     }
 
-    /// Distribute the exciter force to per-mode forces.
-    pub fn distribute_force_to_modes(&self, mode_coefficients: &[f32]) -> Vec<f32> {
-        mode_coefficients
-            .iter()
-            .map(|c| self.exciter_force * c)
-            .collect()
-    }
+    // `update_resonator_state` and `distribute_force_to_modes` allocated a
+    // `Vec<f32>` per call and were never invoked from the audio path. Removed
+    // 2026-05-28 (P3.1).
 }
 
 impl Default for InteractionState {
@@ -161,8 +123,6 @@ pub struct BidirectionalInteractionBus {
     pub state: InteractionState,
     /// Cached per-mode coupling coefficients.
     pub mode_coefficients: Vec<f32>,
-    /// Cached per-mode force values.
-    pub per_mode_forces: Vec<f32>,
 }
 
 impl BidirectionalInteractionBus {
@@ -171,14 +131,12 @@ impl BidirectionalInteractionBus {
         Self {
             state: InteractionState::new(),
             mode_coefficients: Vec::new(),
-            per_mode_forces: Vec::new(),
         }
     }
 
     /// Initialize buffers for the requested mode count.
     pub fn initialize(&mut self, mode_count: usize) {
         self.mode_coefficients.resize(mode_count, 0.0);
-        self.per_mode_forces.resize(mode_count, 0.0);
         self.update_coefficients();
     }
 
@@ -205,18 +163,9 @@ impl BidirectionalInteractionBus {
         )
     }
 
-    /// Distribute a single exciter force across all modes.
-    pub fn distribute_force(&mut self, exciter_force: f32) -> &[f32] {
-        self.state.set_exciter_force(exciter_force);
-
-        for (i, coeff) in self.mode_coefficients.iter().enumerate() {
-            if i < self.per_mode_forces.len() {
-                self.per_mode_forces[i] = exciter_force * coeff;
-            }
-        }
-
-        &self.per_mode_forces
-    }
+    // `distribute_force` and the backing `per_mode_forces` buffer were never
+    // read on the audio path; per-mode coupling is multiplied inline inside
+    // `ModalResonator::process_sample`. Removed 2026-05-28 (P3.1).
 
     /// Refresh the dynamic interaction state.
     pub fn update(&mut self) {
@@ -296,18 +245,19 @@ mod tests {
         let mut bus = BidirectionalInteractionBus::new();
         bus.initialize(4);
 
+        // initialize allocates the mode-coefficient cache and runs an initial
+        // update pass — the audio path then mutates these coefficients in
+        // place every sample.
         assert_eq!(bus.mode_coefficients.len(), 4);
-        assert_eq!(bus.per_mode_forces.len(), 4);
 
         bus.update();
 
         let (disp, _vel) = bus.get_resonator_feedback();
         assert_eq!(disp, 0.0);
 
-        let forces = bus.distribute_force(1.0);
-        assert_eq!(forces.len(), 4);
-
-        let sum: f32 = forces.iter().sum();
-        assert!(sum > 0.0, "Should have non-zero distributed force");
+        // Mode coefficients must contain at least one non-zero value after
+        // initialize; otherwise the resonator path would multiply by zero.
+        let sum: f32 = bus.mode_coefficients.iter().map(|c| c.abs()).sum();
+        assert!(sum > 0.0, "Should have non-zero mode coefficients after init");
     }
 }

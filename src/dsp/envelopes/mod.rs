@@ -185,6 +185,12 @@ impl MSEG {
     }
 
     /// Set looping behavior and loop bounds.
+    /// Whether the loop region is currently engaged. Used by tests to verify
+    /// Drone-mode wiring.
+    pub fn is_loop_enabled(&self) -> bool {
+        !matches!(self.loop_mode, LoopMode::Off)
+    }
+
     pub fn set_loop(&mut self, mode: LoopMode, start_stage: u8, end_stage: u8) {
         self.loop_mode = mode;
         self.loop_start_stage = start_stage.clamp(1, 4);

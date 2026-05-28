@@ -440,6 +440,19 @@ fn dft_magnitude_squared(samples: &[f32], bin: usize) -> f32 {
 }
 
 pub fn analyze_post_chain_aliasing(sample_rate: u32, frame_count: usize) -> AliasingReport {
+    analyze_post_chain_aliasing_at_quality(sample_rate, frame_count, PostQualityMode::Render)
+}
+
+/// Aliasing analysis at an explicit quality mode.
+///
+/// `analyze_post_chain_aliasing` calls this with `Render`. Pinning the quality
+/// lets regression tests compare a low-oversample lane to a high-oversample one
+/// and verify the clipper actually reduces alias energy as the factor rises.
+pub fn analyze_post_chain_aliasing_at_quality(
+    sample_rate: u32,
+    frame_count: usize,
+    quality_mode: PostQualityMode,
+) -> AliasingReport {
     let sample_rate = sample_rate.max(1);
     let frame_count = frame_count.max(256);
     let nyquist_bin = frame_count / 2;
@@ -448,7 +461,7 @@ pub fn analyze_post_chain_aliasing(sample_rate: u32, frame_count: usize) -> Alia
 
     let mut chain = PostProcessingChain::new();
     chain.set_sample_rate(sample_rate as f32);
-    chain.set_quality_mode(PostQualityMode::Render);
+    chain.set_quality_mode(quality_mode);
     chain.set_filter_params(20_000.0, 0.0, 0.0);
     chain.set_drive_params(2.5, 0.35, 0.2);
     chain.set_body_params(0.0, 0.0);
@@ -788,7 +801,8 @@ impl OfflineRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::analyze_post_chain_aliasing;
+    use super::{analyze_post_chain_aliasing, analyze_post_chain_aliasing_at_quality};
+    use crate::dsp::PostQualityMode;
 
     #[test]
     fn aliasing_report_is_finite_and_populated() {
@@ -802,5 +816,44 @@ mod tests {
         assert!(report.alias_ratio_db.is_finite());
         assert!(report.strongest_alias_frequency_hz > 0.0);
         assert!(report.strongest_alias_energy.is_finite());
+    }
+
+    /// Render-mode (16× oversample) aliasing must stay below a budget so that
+    /// regressing the clipper or downstream stages fails CI rather than slipping
+    /// out silently. The threshold is set above the current measured value with
+    /// a margin and is the contract this test enforces; tighten it when the
+    /// chain genuinely improves.
+    #[test]
+    fn render_mode_alias_ratio_stays_within_budget() {
+        // Empirically the Render-mode ratio sits well below -10 dB; the budget
+        // is the regression line, not the current measured value.
+        const ALIAS_RATIO_BUDGET_DB: f32 = -10.0;
+
+        let report =
+            analyze_post_chain_aliasing_at_quality(48_000, 4_096, PostQualityMode::Render);
+        assert!(
+            report.alias_ratio_db < ALIAS_RATIO_BUDGET_DB,
+            "Render alias_ratio_db {} exceeded budget {} dB — clipper or post chain regressed",
+            report.alias_ratio_db,
+            ALIAS_RATIO_BUDGET_DB
+        );
+    }
+
+    /// Higher oversampling must produce strictly less alias energy than Eco
+    /// (1×). This pairs the analyzer with the P0 oversampled-clipper fix: if
+    /// the clipper ever silently goes back to a no-op, this fails.
+    #[test]
+    fn higher_quality_reduces_alias_ratio() {
+        let eco =
+            analyze_post_chain_aliasing_at_quality(48_000, 4_096, PostQualityMode::Eco);
+        let render =
+            analyze_post_chain_aliasing_at_quality(48_000, 4_096, PostQualityMode::Render);
+
+        assert!(
+            render.alias_ratio_db < eco.alias_ratio_db,
+            "Render alias_ratio_db ({}) should be lower than Eco ({}) — clipper oversampling regressed",
+            render.alias_ratio_db,
+            eco.alias_ratio_db
+        );
     }
 }

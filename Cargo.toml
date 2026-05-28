@@ -10,6 +10,10 @@ crate-type = ["cdylib", "rlib"]
 name = "render"
 path = "src/bin/render.rs"
 
+[[bin]]
+name = "render_presets"
+path = "src/bin/render_presets.rs"
+
 [dependencies]
 nih-plug = { package = "nih_plug", git = "https://github.com/robbert-vdh/nih-plug" }
 nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug", optional = true }

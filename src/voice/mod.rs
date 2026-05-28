@@ -39,8 +39,34 @@ pub use manager::{VoiceManager, MAX_VOICES};
 /// assert!((corrosion::voice::midi_to_hz(69) - 440.0).abs() < 1e-3);
 /// ```
 pub fn midi_to_hz(note: u8) -> f32 {
-    440.0 * 2_f32.powf((note as f32 - 69.0) / 12.0)
+    // MIDI standard defines notes 0..=127 (`u8` already caps the upper end).
+    // Note 0 = 8.18 Hz, note 127 = 12_543.85 Hz — both well within the safe
+    // range for our biquad coefficient generation, so no further clamp is
+    // necessary at this layer. The clamp on `note as f32` happens implicitly
+    // because `u8` cannot represent values outside `[0, 255]` and host MIDI
+    // events already cap velocity/note at 127.
+    let safe_note = note.min(127) as f32;
+    440.0 * 2_f32.powf((safe_note - 69.0) / 12.0)
 }
+
+/// Convert a pitch-bend value in semitones into a frequency multiplier.
+///
+/// Clamps to ±24 semitones — a reasonable safety bound since classic
+/// 14-bit pitch bend is typically ±2 semitones and MPE per-note tuning
+/// rarely exceeds ±48 (we cap conservatively so a malformed event can't
+/// drive the modal bank past Nyquist).
+#[inline]
+pub fn pitch_bend_semitones_to_factor(semitones: f32) -> f32 {
+    let clamped = semitones.clamp(-24.0, 24.0);
+    2.0_f32.powf(clamped / 12.0)
+}
+
+/// Default pitch-bend range applied to `MidiPitchBend` events, in semitones.
+///
+/// Standard MIDI uses ±2 semitones by default; we follow that. The host
+/// can send a higher-resolution per-note tuning via `PolyTuning` to override
+/// for MPE setups.
+pub const PITCH_BEND_RANGE_SEMITONES: f32 = 2.0;
 
 #[derive(Clone, Copy, Debug)]
 /// Snapshot of per-note controls captured at note-on time.
@@ -232,6 +258,12 @@ pub struct VoiceControls {
     pub sludge: f32,
     /// Per-object character controls; only the active object's fields are used.
     pub character: CharacterParams,
+    /// Multiplier applied to the requested resonator mode count.
+    ///
+    /// Driven by the active QualityMode at note-on (Eco=0.5x, Normal=1.0x,
+    /// High=1.5x, Render=2.0x). The mode count is rounded and clamped to at
+    /// least one so quality affects modal density, not just oversampling.
+    pub mode_count_scale: f32,
 }
 
 impl Default for VoiceControls {
@@ -329,6 +361,7 @@ impl Default for VoiceControls {
             heat: 0.0,
             sludge: 0.0,
             character: CharacterParams::default(),
+            mode_count_scale: 1.0,
         }
     }
 }
@@ -410,6 +443,18 @@ pub struct Voice {
     adsr_sustain: f32,
     adsr_release: f32,
     mseg: MSEG,
+
+    // MIDI expression state. The voice combines per-channel and per-note
+    // expression sources, so MPE, classic CC1+aftertouch, and poly pressure
+    // can all reach the same destinations without stepping on each other.
+    /// Pitch bend in semitones. Channel-wide; updated by MidiPitchBend events.
+    pitch_bend_semitones: f32,
+    /// Channel pressure (aftertouch), `0.0..=1.0`. Updated by MidiChannelPressure.
+    channel_pressure: f32,
+    /// Per-note pressure (poly aftertouch), `0.0..=1.0`. Maxed with channel pressure.
+    poly_pressure: f32,
+    /// CC1 mod wheel, `0.0..=1.0`. Routed to brightness boost.
+    mod_wheel: f32,
 }
 
 const TAIL_ENERGY_THRESHOLD: f32 = 1e-4;
@@ -473,6 +518,11 @@ impl Voice {
             adsr_sustain: 0.7,
             adsr_release: 0.5,
             mseg: MSEG::new(),
+
+            pitch_bend_semitones: 0.0,
+            channel_pressure: 0.0,
+            poly_pressure: 0.0,
+            mod_wheel: 0.0,
         }
     }
 
@@ -743,6 +793,7 @@ impl Voice {
             controls.res_damping,
             controls.res_brightness,
             controls.character,
+            controls.mode_count_scale,
         );
         self.resonator.set_interaction_params(
             controls.strike_position,
@@ -752,6 +803,14 @@ impl Voice {
             controls.fundamental_anchor,
             self.sample_rate,
         );
+        // Carry the current channel pitch bend into the new note so a held
+        // bend doesn't reset every time a fresh key is pressed. Channel
+        // pressure and mod wheel persist for the same reason; poly pressure
+        // is per-note and must reset.
+        self.poly_pressure = 0.0;
+        let bend_factor = pitch_bend_semitones_to_factor(self.pitch_bend_semitones);
+        self.resonator
+            .set_pitch_bend_factor(bend_factor, self.sample_rate as u32);
         self.configure_envelope(exciter_type, velocity_norm, controls);
 
         let v_norm = velocity_norm;
@@ -910,6 +969,85 @@ impl Voice {
         self.highpass_state = 0.0;
     }
 
+    /// Apply held-note automation: damping, brightness, and strike position
+    /// for an already-rendering voice.
+    ///
+    /// Only the active (held) voices receive updates so tails decay with the
+    /// timbre they had at note-on. Allocation-free; recomputes resonator mode
+    /// coefficients and interaction-bus state in place.
+    pub fn update_live_controls(
+        &mut self,
+        damping: f32,
+        brightness: f32,
+        strike_position: f32,
+        coupling_stiffness: f32,
+        position_wander: f32,
+        position_envelope: f32,
+        fundamental_anchor: f32,
+        sample_rate: u32,
+    ) {
+        if !self.active {
+            return;
+        }
+        self.resonator
+            .set_live_resonator_controls(damping, brightness, sample_rate);
+        self.resonator.set_interaction_params(
+            strike_position,
+            coupling_stiffness,
+            position_wander,
+            position_envelope,
+            fundamental_anchor,
+            self.sample_rate,
+        );
+    }
+
+    /// Apply a channel pitch bend in semitones to this voice.
+    ///
+    /// Rebuilds the resonator mode coefficients in place via
+    /// `ModalResonator::set_pitch_bend_factor`. Allocation-free.
+    pub fn set_pitch_bend_semitones(&mut self, semitones: f32) {
+        self.pitch_bend_semitones = semitones;
+        let factor = pitch_bend_semitones_to_factor(semitones);
+        self.resonator
+            .set_pitch_bend_factor(factor, self.sample_rate as u32);
+    }
+
+    /// Update channel pressure (`MidiChannelPressure`) for this voice.
+    #[inline]
+    pub fn set_channel_pressure(&mut self, value: f32) {
+        self.channel_pressure = value.clamp(0.0, 1.0);
+    }
+
+    /// Update per-note (poly) pressure (`PolyPressure`) for this voice.
+    #[inline]
+    pub fn set_poly_pressure(&mut self, value: f32) {
+        self.poly_pressure = value.clamp(0.0, 1.0);
+    }
+
+    /// Update CC1 mod wheel for this voice (channel-wide expression source).
+    #[inline]
+    pub fn set_mod_wheel(&mut self, value: f32) {
+        self.mod_wheel = value.clamp(0.0, 1.0);
+    }
+
+    /// Effective pressure used by the expression scaler: max of channel and
+    /// poly pressure so MPE (poly) and classic (channel) aftertouch both reach
+    /// the same destination.
+    #[inline]
+    fn effective_pressure(&self) -> f32 {
+        self.channel_pressure.max(self.poly_pressure)
+    }
+
+    /// Per-sample output gain shaped by expression. Pressure raises gain up
+    /// to ~+3.5 dB; mod wheel adds ~+2 dB so CC1 sweeps stay distinct from
+    /// pressure on hosts that only send one of the two. The cap keeps a
+    /// single voice's expressioned output ≲ 1.8 so the global limiter still
+    /// has headroom across an 8-voice pool.
+    #[inline]
+    fn expression_gain(&self) -> f32 {
+        1.0 + self.effective_pressure() * 0.5 + self.mod_wheel * 0.3
+    }
+
     /// Release the voice and begin its tail phase.
     ///
     /// The resonator is allowed to decay naturally; only the excitation
@@ -969,6 +1107,20 @@ impl Voice {
     /// The frame counter snapshot captured at note-on time.
     pub fn start_frame(&self) -> u64 {
         self.start_frame
+    }
+
+    /// Test-only accessor for the resonator's modal profile, so lib-level
+    /// integration tests can confirm which family the voice picked.
+    #[cfg(test)]
+    pub(crate) fn resonator_profile_for_test(&self) -> ModalProfileId {
+        self.resonator.profile
+    }
+
+    /// Test-only accessor for whether the MSEG loop is engaged on this voice.
+    /// Used to verify Drone-mode wiring.
+    #[cfg(test)]
+    pub(crate) fn mseg_loop_enabled_for_test(&self) -> bool {
+        self.mseg.is_loop_enabled()
     }
 
     fn rattle_noise(&mut self, signal_level: f32) -> f32 {
@@ -1072,8 +1224,13 @@ impl Voice {
         let boosted_sample = sample_with_rattle + (highpass * boost_amount);
 
         let clamped = boosted_sample.clamp(-1.0, 1.0);
+        // Expression (pressure + mod wheel) scales the post-clamp signal so
+        // it can swell past unity without distorting the resonator path. The
+        // global limiter at the plugin boundary handles any per-voice over-1.0
+        // peaks the expression curve produces.
+        let gained = clamped * self.expression_gain();
         const DENORMAL_FLUSH: f32 = 1e-20;
-        let flushed = clamped + DENORMAL_FLUSH - DENORMAL_FLUSH;
+        let flushed = gained + DENORMAL_FLUSH - DENORMAL_FLUSH;
 
         // Track decaying peak energy so the manager can steal the quietest
         // voice and so inactive tails eventually self-disable.
@@ -1142,15 +1299,22 @@ impl Voice {
 
         self.highpass_state = 0.8 * self.highpass_state + 0.2 * (mono + rattle);
         let highpass = (mono + rattle) - self.highpass_state;
-        let boost_amount = velocity_norm * if self.exciter_type == 0 { 2.0 } else { 1.5 };
+        // Exciter ids are 1..=16 (see params::ExciterType). The `0` branch
+        // never fires today, so we keep the unconditional 1.5x boost.
+        let boost_amount = velocity_norm * 1.5;
         let boosted_left = left_with_rattle + (highpass * boost_amount);
         let boosted_right = right_with_rattle + (highpass * boost_amount);
 
         let clamped_left = boosted_left.clamp(-1.0, 1.0);
         let clamped_right = boosted_right.clamp(-1.0, 1.0);
+        // Apply expression gain to both channels equally. Mirror of the mono
+        // path; pressure/CC1 should sound balanced across the stereo field.
+        let exp_gain = self.expression_gain();
+        let gained_left = clamped_left * exp_gain;
+        let gained_right = clamped_right * exp_gain;
         const DENORMAL_FLUSH: f32 = 1e-20;
-        let flushed_left = clamped_left + DENORMAL_FLUSH - DENORMAL_FLUSH;
-        let flushed_right = clamped_right + DENORMAL_FLUSH - DENORMAL_FLUSH;
+        let flushed_left = gained_left + DENORMAL_FLUSH - DENORMAL_FLUSH;
+        let flushed_right = gained_right + DENORMAL_FLUSH - DENORMAL_FLUSH;
 
         // Track decaying peak energy so the manager can steal the quietest
         // voice and so inactive tails eventually self-disable.
@@ -1490,6 +1654,105 @@ mod tests {
     }
 
     #[test]
+    fn mode_count_scale_changes_resonator_density() {
+        // Eco should produce fewer modes than Render at note-on for the same
+        // profile. The exact counts depend on the per-object generator, but
+        // Render-scaled mode count must strictly exceed Eco-scaled mode count
+        // for at least one profile we ship.
+        let mut eco_voice = Voice::new();
+        let mut render_voice = Voice::new();
+
+        let mut eco = VoiceControls::default();
+        eco.mode_count_scale = 0.5;
+        let mut render = VoiceControls::default();
+        render.mode_count_scale = 2.0;
+
+        eco_voice.note_on_with_controls(
+            60,
+            100.0,
+            ModalProfileId::Pipe,
+            0,
+            1.0,
+            0.0,
+            0.0,
+            2,
+            eco,
+        );
+        render_voice.note_on_with_controls(
+            60,
+            100.0,
+            ModalProfileId::Pipe,
+            0,
+            1.0,
+            0.0,
+            0.0,
+            2,
+            render,
+        );
+
+        let eco_modes = eco_voice.resonator.modes.len();
+        let render_modes = render_voice.resonator.modes.len();
+        assert!(
+            render_modes > eco_modes,
+            "Render quality should produce more modes than Eco: eco={eco_modes}, render={render_modes}"
+        );
+    }
+
+    #[test]
+    fn held_note_damping_automation_shortens_decay() {
+        // A long-sustaining specialty voice gets clobbered with maximum damping
+        // mid-note. The resonator decay must collapse — proving held-note
+        // automation actually retunes the modes after note-on.
+        let mut voice = Voice::new();
+        let bright = VoiceControls {
+            res_damping: 0.0, // longest possible decay
+            res_brightness: 0.5,
+            ..VoiceControls::default()
+        };
+        // Pneumatic jet sustains as long as the note is held.
+        voice.note_on_with_controls(60, 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 13, bright);
+
+        let sample_rate = 48_000u32;
+        for _ in 0..4_096 {
+            voice.process_sample(sample_rate);
+        }
+
+        let baseline_decay = voice.resonator.modes[0].spec.decay_seconds;
+
+        voice.update_live_controls(
+            1.0, // max damping → shortest decay
+            0.5,
+            0.5,
+            1.0,
+            0.0,
+            0.0,
+            0.3,
+            sample_rate,
+        );
+
+        let damped_decay = voice.resonator.modes[0].spec.decay_seconds;
+        assert!(
+            damped_decay < baseline_decay * 0.5,
+            "held-note damping automation should shorten decay: baseline={baseline_decay}, damped={damped_decay}"
+        );
+    }
+
+    #[test]
+    fn held_note_automation_skips_released_voices() {
+        // Released (tail) voices keep their note-on snapshot so held-note
+        // automation never reaches them.
+        let mut voice = Voice::new();
+        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 13);
+        voice.note_off();
+
+        let pre = voice.resonator.modes[0].spec.decay_seconds;
+        voice.update_live_controls(1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.3, 48_000);
+        let post = voice.resonator.modes[0].spec.decay_seconds;
+
+        assert_eq!(pre, post, "tail voices should not receive live automation");
+    }
+
+    #[test]
     fn taut_cable_dynamic_hook_changes_output() {
         // With the tension-drop hook wired into the per-sample loop, a large
         // tension drop must measurably change the cable's output versus none.
@@ -1539,6 +1802,106 @@ mod tests {
         assert!(
             (stiff_energy - boing_energy).abs() > 0.01,
             "tension-drop dynamic hook should change output: stiff={stiff_energy}, boing={boing_energy}"
+        );
+    }
+
+    #[test]
+    fn pitch_bend_semitones_factor_round_trip() {
+        // ±12 semitones → exactly an octave; 0 → unity.
+        let neutral = super::pitch_bend_semitones_to_factor(0.0);
+        let octave_up = super::pitch_bend_semitones_to_factor(12.0);
+        let octave_down = super::pitch_bend_semitones_to_factor(-12.0);
+        assert!((neutral - 1.0).abs() < 1e-6);
+        assert!((octave_up - 2.0).abs() < 1e-5);
+        assert!((octave_down - 0.5).abs() < 1e-5);
+    }
+
+    #[test]
+    fn pitch_bend_retunes_held_resonator_modes() {
+        // Bending up an octave must roughly double the resonator's first-mode
+        // frequency without re-allocating the modal bank.
+        let mut voice = Voice::new();
+        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2);
+        let neutral = voice.resonator.modes[0].spec.frequency_hz;
+
+        voice.set_pitch_bend_semitones(12.0);
+        let bent = voice.resonator.modes[0].spec.frequency_hz;
+        assert!(
+            (bent - neutral * 2.0).abs() < neutral * 0.01,
+            "octave bend should double mode frequency: neutral={neutral}, bent={bent}"
+        );
+
+        // Returning to neutral should restore the original frequency.
+        voice.set_pitch_bend_semitones(0.0);
+        let restored = voice.resonator.modes[0].spec.frequency_hz;
+        assert!(
+            (restored - neutral).abs() < neutral * 0.001,
+            "bend back to 0 should restore the original frequency"
+        );
+    }
+
+    #[test]
+    fn channel_pressure_increases_voice_output() {
+        // Aftertouch should raise the rendered amplitude. We compare a quiet
+        // voice against the same voice with full channel pressure.
+        let mut quiet = Voice::new();
+        let mut pressed = Voice::new();
+        quiet.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2);
+        pressed.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2);
+        pressed.set_channel_pressure(1.0);
+
+        let sample_rate = 48_000u32;
+        let quiet_energy: f32 = (0..2048)
+            .map(|_| quiet.process_sample(sample_rate).abs())
+            .sum();
+        let pressed_energy: f32 = (0..2048)
+            .map(|_| pressed.process_sample(sample_rate).abs())
+            .sum();
+        assert!(
+            pressed_energy > quiet_energy * 1.1,
+            "channel pressure should audibly boost output: quiet={quiet_energy}, pressed={pressed_energy}"
+        );
+    }
+
+    #[test]
+    fn mod_wheel_boosts_output_independently_of_pressure() {
+        // Mod wheel uses a separate axis from pressure so hosts that send only
+        // CC1 still get an audible response.
+        let mut neutral = Voice::new();
+        let mut wheeled = Voice::new();
+        neutral.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2);
+        wheeled.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2);
+        wheeled.set_mod_wheel(1.0);
+
+        let sample_rate = 48_000u32;
+        let neutral_energy: f32 = (0..2048)
+            .map(|_| neutral.process_sample(sample_rate).abs())
+            .sum();
+        let wheeled_energy: f32 = (0..2048)
+            .map(|_| wheeled.process_sample(sample_rate).abs())
+            .sum();
+        assert!(
+            wheeled_energy > neutral_energy * 1.05,
+            "mod wheel should audibly boost output: neutral={neutral_energy}, wheeled={wheeled_energy}"
+        );
+    }
+
+    #[test]
+    fn poly_pressure_overrides_channel_pressure_when_higher() {
+        // Per-note pressure must reach the expression scaler even if channel
+        // pressure is lower (MPE / poly aftertouch path).
+        let mut voice = Voice::new();
+        voice.note_on(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2);
+
+        voice.set_channel_pressure(0.0);
+        voice.set_poly_pressure(1.0);
+        let with_poly = voice.expression_gain();
+        voice.set_poly_pressure(0.0);
+        let baseline = voice.expression_gain();
+
+        assert!(
+            with_poly > baseline + 0.1,
+            "poly pressure should raise expression gain: baseline={baseline}, with_poly={with_poly}"
         );
     }
 }

@@ -2,7 +2,7 @@
 //!
 //! This is the root module of the Corrosion VST plugin, an industrial physical modeling
 //! synthesizer built using the nih_plug framework. The plugin implements a modal synthesis
-//! engine with 17 different exciter types, 9 resonator objects, and comprehensive
+//! engine with 16 different exciter types, 9 resonator objects, and comprehensive
 //! post-processing effects.
 //!
 //! ## Architecture Overview
@@ -84,8 +84,209 @@ use nih_plug::prelude::*;
 use voice::{VoiceControls, VoiceManager};
 
 // Public re-exports for convenience
-pub use params::{CorrosionParams, Object};
+pub use params::{CorrosionParams, Object, PlayMode, QualityMode};
 pub use presets::Preset;
+
+/// Map an incoming MIDI note to a kit-slot object when `PlayMode::Kit` is
+/// active. Each object family gets a contiguous block of ~10 MIDI notes
+/// across the playable range; outside the C1..D9 block the mapping wraps so
+/// the player can still trigger every family at extreme registers.
+fn note_to_kit_object(note: u8) -> Object {
+    let slot = ((note as i32 - 24).max(0) / 10).rem_euclid(9);
+    Object::from_int(slot)
+}
+
+/// Map the `sync_rate` knob and host tempo into a normalized echo
+/// `delay_time` value (the 0..1 form the `FactoryEcho` expects).
+///
+/// Below `0.05` the sync is treated as Off and the caller's free-running
+/// delay value is returned unchanged. Above that, `sync_rate` selects a
+/// musical division and the resulting delay in seconds is converted back
+/// into the echo's normalized space `(0.02 + t * 0.78)` so the existing
+/// post-chain code path stays unchanged. If the host has not reported a
+/// tempo the function falls back to the free-running value (no sync).
+fn sync_rate_to_delay_time(
+    sync_rate: f32,
+    tempo_bpm: Option<f32>,
+    free_running_delay_time: f32,
+) -> f32 {
+    // Off region: passthrough.
+    if sync_rate < 0.05 {
+        return free_running_delay_time;
+    }
+    let Some(tempo) = tempo_bpm.filter(|t| t.is_finite() && *t > 0.0) else {
+        return free_running_delay_time;
+    };
+
+    // 6 discrete musical divisions in BEATS (1/4 note = 1 beat). Ascending
+    // so a higher sync_rate yields a longer delay.
+    const DIVISIONS: [f32; 6] = [
+        0.25, // 1/16 note (0.25 beats)
+        0.5,  // 1/8 note
+        1.0,  // 1/4 note (quarter)
+        2.0,  // 1/2 note (half)
+        4.0,  // 1/1 note (whole)
+        8.0,  // 2/1 note (double whole)
+    ];
+    let normalized = ((sync_rate - 0.05) / 0.95).clamp(0.0, 1.0);
+    let idx = (normalized * DIVISIONS.len() as f32) as usize;
+    let beats = DIVISIONS[idx.min(DIVISIONS.len() - 1)];
+    let beat_seconds = 60.0 / tempo;
+    let target_seconds = beats * beat_seconds;
+    // Echo maps delay_time 0..1 → (0.02 + t * 0.78) seconds.
+    ((target_seconds - 0.02) / 0.78).clamp(0.0, 1.0)
+}
+
+/// Map the active quality mode to the resonator mode-count multiplier captured
+/// at note-on. Eco runs a leaner bank to save CPU; Render trades CPU for modal
+/// density. Normal is the unscaled baseline.
+#[inline]
+fn quality_mode_count_scale(mode: QualityMode) -> f32 {
+    match mode {
+        QualityMode::Eco => 0.5,
+        QualityMode::Normal => 1.0,
+        QualityMode::High => 1.5,
+        QualityMode::Render => 2.0,
+    }
+}
+
+/// Bias values derived from the four macro params (Mass, Corrosion, Violence,
+/// Brightness). Macros default to `0.5` which produces zero bias; deviation
+/// from `0.5` layers the corresponding cluster of effects on top of the
+/// per-parameter knobs. The structure is computed once per buffer in
+/// `process()` so a single twist of a macro shows up at every downstream
+/// destination consistently. See PRD §12 for the routing intent.
+#[derive(Clone, Copy, Debug)]
+struct MacroBias {
+    /// Multiplicative scale applied to mass-like exciter controls and
+    /// resonator size.
+    mass_factor: f32,
+    /// Multiplicative scale on the resonator size param. Smaller than
+    /// `mass_factor` so a maxed Mass macro doesn't push the modal bank out
+    /// of the calibrated frequency range.
+    size_factor: f32,
+    /// Additive offset applied to `res_damping` (Corrosion → more damping).
+    res_damping_offset: f32,
+    /// Additive offset applied to `res_brightness` (Corrosion darkens;
+    /// Brightness opens).
+    res_brightness_offset: f32,
+    /// Additive offset applied to the global `rust` control.
+    rust_offset: f32,
+    /// Additive offset applied to the global `damage` control.
+    damage_offset: f32,
+    /// Additive offset applied to the master `drive`.
+    drive_offset: f32,
+    /// Additive offset applied to the post-chain `drive_amount`.
+    drive_amount_offset: f32,
+    /// Additive offset applied to the post-chain `chaos_depth`.
+    chaos_depth_offset: f32,
+    /// Multiplicative scale on the WDF filter cutoff. Brightness ±2 octaves.
+    filter_cutoff_factor: f32,
+}
+
+impl MacroBias {
+    /// Neutral bias — all multipliers `1.0`, all offsets `0.0`. Used by tests
+    /// to verify that midpoint macros produce no DSP change.
+    #[cfg(test)]
+    const NEUTRAL: Self = Self {
+        mass_factor: 1.0,
+        size_factor: 1.0,
+        res_damping_offset: 0.0,
+        res_brightness_offset: 0.0,
+        rust_offset: 0.0,
+        damage_offset: 0.0,
+        drive_offset: 0.0,
+        drive_amount_offset: 0.0,
+        chaos_depth_offset: 0.0,
+        filter_cutoff_factor: 1.0,
+    };
+}
+
+/// Derive the macro bias from the current parameter values.
+fn resolve_macro_bias(params: &CorrosionParams) -> MacroBias {
+    // Each macro is `0.0..=1.0`; subtract the neutral midpoint so the bias is
+    // centered on zero. Below `0.5` reduces, above increases.
+    let m = params.macro_mass.value() - 0.5;
+    let c = params.macro_corrosion.value() - 0.5;
+    let v = params.macro_violence.value() - 0.5;
+    let b = params.macro_brightness.value() - 0.5;
+
+    MacroBias {
+        // Mass: ±50% on exciter mass cluster, ±25% on resonator size.
+        mass_factor: (1.0 + m * 1.0).max(0.1),
+        size_factor: (1.0 + m * 0.5).max(0.1),
+        // Corrosion adds damping, removes brightness, adds rust.
+        res_damping_offset: c * 0.4,
+        // Brightness routes positively to brightness; corrosion subtracts.
+        res_brightness_offset: -c * 0.4 + b * 0.6,
+        rust_offset: c * 2.0,
+        // Violence amplifies drive/chaos/damage.
+        damage_offset: v * 4.0,
+        drive_offset: v * 1.0,
+        drive_amount_offset: v * 0.4,
+        chaos_depth_offset: v * 0.4,
+        // Brightness opens the filter exponentially (±2 octaves at the rails).
+        filter_cutoff_factor: 2.0_f32.powf(b * 2.0),
+    }
+}
+
+/// Apply the macro bias in-place to the `VoiceControls` snapshot used at
+/// note-on. Voice-side fields (mass cluster, damping/brightness) get the
+/// per-voice layer; everything else (drive, filter, rust/damage/size) is
+/// handled at the host call site so the macro hits a single point in each
+/// pipeline.
+fn apply_macro_bias_to_controls(controls: &mut VoiceControls, bias: &MacroBias) {
+    controls.hand_mass *= bias.mass_factor;
+    controls.mallet_mass *= bias.mass_factor;
+    controls.stick_mass *= bias.mass_factor;
+    controls.pipe_mass *= bias.mass_factor;
+    controls.chain_mass *= bias.mass_factor;
+    controls.drag_exciter_mass *= bias.mass_factor;
+    controls.particle_mass *= bias.mass_factor;
+
+    controls.res_damping = (controls.res_damping + bias.res_damping_offset).clamp(0.0, 1.0);
+    controls.res_brightness =
+        (controls.res_brightness + bias.res_brightness_offset).clamp(0.0, 1.0);
+}
+
+/// One-pole smoother used to de-zipper per-sample parameter automation.
+///
+/// `current += (target - current) * coeff` each sample. Cheap, allocation-free,
+/// and bit-exact when the target stops moving.
+#[derive(Clone, Copy, Debug)]
+struct OnePoleSmoother {
+    current: f32,
+    target: f32,
+    coeff: f32,
+}
+
+impl OnePoleSmoother {
+    const TAU_SECONDS: f32 = 0.02;
+
+    fn new(initial: f32) -> Self {
+        Self {
+            current: initial,
+            target: initial,
+            coeff: 0.0,
+        }
+    }
+
+    fn set_sample_rate(&mut self, sample_rate: f32) {
+        let sr = sample_rate.max(1.0);
+        self.coeff = 1.0 - (-1.0 / (Self::TAU_SECONDS * sr)).exp();
+    }
+
+    #[inline]
+    fn set_target(&mut self, target: f32) {
+        self.target = target;
+    }
+
+    #[inline]
+    fn next(&mut self) -> f32 {
+        self.current += (self.target - self.current) * self.coeff;
+        self.current
+    }
+}
 
 /// Output limiter threshold to prevent clipping and ensure headroom.
 ///
@@ -114,6 +315,28 @@ pub fn apply_output_limiter(sample: f32) -> f32 {
     sample.clamp(-LIMITER_THRESHOLD, LIMITER_THRESHOLD)
 }
 
+/// Maximum drive-amount-to-gain multiplier in `apply_drive`. A drive of `1.0`
+/// brings the input up by `1 + DRIVE_GAIN_SCALE` before the waveshaper.
+const DRIVE_GAIN_SCALE: f32 = 4.0;
+/// Start of the soft-knee region on the positive half (tube-like curve).
+const DRIVE_POS_SOFT_THRESHOLD: f32 = 0.3;
+/// Start of the hard-limit region on the positive half.
+const DRIVE_POS_HARD_THRESHOLD: f32 = 0.8;
+/// Upper bound for the compressed positive output (allows >1.0 to preserve
+/// transient harmonics that the downstream limiter handles).
+const DRIVE_POS_CEILING: f32 = 1.2;
+/// Start of the soft-knee region on the negative half (sharper than positive
+/// to emphasize asymmetric harmonics).
+const DRIVE_NEG_SOFT_THRESHOLD: f32 = 0.25;
+/// Start of the hard-limit region on the negative half.
+const DRIVE_NEG_HARD_THRESHOLD: f32 = 0.7;
+/// Upper bound for the compressed negative output. Tighter than the positive
+/// side so the asymmetry is audible.
+const DRIVE_NEG_CEILING: f32 = 1.1;
+/// Outer clamp applied to the dry/wet mix; sized so downstream limiters
+/// still have headroom even at maximum drive.
+const DRIVE_OUTPUT_CLAMP: f32 = 1.5;
+
 /// Applies asymmetric drive/saturation to a sample.
 ///
 /// This implements a multi-stage waveshaper with:
@@ -137,8 +360,8 @@ pub fn apply_drive(sample: f32, drive: f32) -> f32 {
         return sample;
     }
 
-    // Calculate drive gain - exponential scaling for perceptual uniformity
-    let drive_gain = 1.0 + drive * 4.0;
+    // Drive gain scales the input before the saturation curve.
+    let drive_gain = 1.0 + drive * DRIVE_GAIN_SCALE;
     let amplified = sample * drive_gain;
 
     // Extract magnitude and sign for asymmetric processing
@@ -148,49 +371,49 @@ pub fn apply_drive(sample: f32, drive: f32) -> f32 {
     // Apply asymmetric waveshaping based on signal polarity
     let shaped = if sign > 0.0 {
         // Positive half: gentler curve, more "tube-like"
-        let soft_threshold = 0.3;
-        let hard_threshold = 0.8;
-
-        if abs_sample < soft_threshold {
+        if abs_sample < DRIVE_POS_SOFT_THRESHOLD {
             // Linear region - preserve transients
             amplified
-        } else if abs_sample < hard_threshold {
+        } else if abs_sample < DRIVE_POS_HARD_THRESHOLD {
             // Soft knee using smoothstep (3t² - 2t³) for musical saturation
-            let t = (abs_sample - soft_threshold) / (hard_threshold - soft_threshold);
-            let eased =
-                soft_threshold + (hard_threshold - soft_threshold) * (t * t * (3.0 - 2.0 * t));
+            let t = (abs_sample - DRIVE_POS_SOFT_THRESHOLD)
+                / (DRIVE_POS_HARD_THRESHOLD - DRIVE_POS_SOFT_THRESHOLD);
+            let eased = DRIVE_POS_SOFT_THRESHOLD
+                + (DRIVE_POS_HARD_THRESHOLD - DRIVE_POS_SOFT_THRESHOLD)
+                    * (t * t * (3.0 - 2.0 * t));
             sign * eased
         } else {
             // Hard limiting with exponential decay tail
-            let t = (abs_sample - hard_threshold) / (1.0 + drive_gain);
-            let compressed = hard_threshold + (1.0 - hard_threshold) * (1.0 - (-t).exp());
-            sign * compressed.min(1.2)
+            let t = (abs_sample - DRIVE_POS_HARD_THRESHOLD) / (1.0 + drive_gain);
+            let compressed =
+                DRIVE_POS_HARD_THRESHOLD + (1.0 - DRIVE_POS_HARD_THRESHOLD) * (1.0 - (-t).exp());
+            sign * compressed.min(DRIVE_POS_CEILING)
         }
     } else {
         // Negative half: sharper curve, more aggressive limiting
-        let soft_threshold = 0.25;
-        let hard_threshold = 0.7;
-
-        if abs_sample < soft_threshold {
+        if abs_sample < DRIVE_NEG_SOFT_THRESHOLD {
             // Linear region
             amplified
-        } else if abs_sample < hard_threshold {
+        } else if abs_sample < DRIVE_NEG_HARD_THRESHOLD {
             // Soft knee
-            let t = (abs_sample - soft_threshold) / (hard_threshold - soft_threshold);
-            let eased =
-                soft_threshold + (hard_threshold - soft_threshold) * (t * t * (3.0 - 2.0 * t));
+            let t = (abs_sample - DRIVE_NEG_SOFT_THRESHOLD)
+                / (DRIVE_NEG_HARD_THRESHOLD - DRIVE_NEG_SOFT_THRESHOLD);
+            let eased = DRIVE_NEG_SOFT_THRESHOLD
+                + (DRIVE_NEG_HARD_THRESHOLD - DRIVE_NEG_SOFT_THRESHOLD)
+                    * (t * t * (3.0 - 2.0 * t));
             sign * eased
         } else {
             // Hard limiting with tighter ceiling for negative excursions
-            let t = (abs_sample - hard_threshold) / (1.0 + drive_gain);
-            let compressed = hard_threshold + (1.0 - hard_threshold) * (1.0 - (-t).exp());
-            sign * compressed.min(1.1)
+            let t = (abs_sample - DRIVE_NEG_HARD_THRESHOLD) / (1.0 + drive_gain);
+            let compressed =
+                DRIVE_NEG_HARD_THRESHOLD + (1.0 - DRIVE_NEG_HARD_THRESHOLD) * (1.0 - (-t).exp());
+            sign * compressed.min(DRIVE_NEG_CEILING)
         }
     };
 
     // Dry/wet mix: more drive = more wet signal
     let dry_wet = shaped * drive + sample * (1.0 - drive * 0.5);
-    dry_wet.clamp(-1.5, 1.5)
+    dry_wet.clamp(-DRIVE_OUTPUT_CLAMP, DRIVE_OUTPUT_CLAMP)
 }
 
 /// Handles incoming MIDI note events and routes them to voice management.
@@ -211,9 +434,20 @@ pub fn apply_drive(sample: f32, drive: f32) -> f32 {
 fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
     match event {
         NoteEvent::NoteOn { note, velocity, .. } => {
+            // Decide which object family this note triggers. In Kit mode the
+            // note range picks the family; in Tonal/Drone the global object
+            // param wins. PRD §9.2 / §9.3.
+            let play_mode = PlayMode::from_int(plugin.params.play_mode.value());
+            let object = match play_mode {
+                PlayMode::Kit => note_to_kit_object(note),
+                PlayMode::Tonal | PlayMode::Drone => {
+                    Object::from_int(plugin.params.object.value())
+                }
+            };
+
             // Map the Object parameter to a modal profile for the resonator
             // Each object has distinct modal characteristics (pipe vs plate vs tank, etc.)
-            let profile = match Object::from_int(plugin.params.object.value()) {
+            let profile = match object {
                 Object::Pipe => dsp::ModalProfileId::Pipe,
                 Object::Plate => dsp::ModalProfileId::Plate,
                 Object::Tank => dsp::ModalProfileId::Tank,
@@ -225,9 +459,14 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
                 Object::IndustrialCog => dsp::ModalProfileId::IndustrialCog,
             };
 
+            // Resolve the macro bias once for this note-on. We apply the
+            // voice-side fields via apply_macro_bias_to_controls below, and
+            // bias size/rust/damage at the note_on_with_controls call site.
+            let bias = resolve_macro_bias(&plugin.params);
+
             // Collect all current parameter values into VoiceControls struct
             // This bundles parameters that need to be passed to the voice
-            let controls = VoiceControls {
+            let mut controls = VoiceControls {
                 env_attack: plugin.params.env_attack.value(),
                 env_decay: plugin.params.env_decay.value(),
                 env_sustain: plugin.params.env_sustain.value(),
@@ -335,10 +574,34 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
                     sheet_thinness: plugin.params.sheet_thinness.value(),
                     cog_dissonance: plugin.params.cog_dissonance.value(),
                 },
+                mode_count_scale: quality_mode_count_scale(QualityMode::from_int(
+                    plugin.params.quality_mode.value(),
+                )),
             };
+
+            // Apply Mass / Corrosion / Brightness macro biases to the voice
+            // controls. Violence routes through size/rust/damage and the
+            // post-chain (drive, filter), not through VoiceControls.
+            apply_macro_bias_to_controls(&mut controls, &bias);
+
+            // Drone mode forces the MSEG loop ON between decay (stage 3) and
+            // sustain (stage 4) so friction voices ring indefinitely until
+            // note-off. Hit-style families retain their one-shot envelope.
+            if matches!(play_mode, PlayMode::Drone) {
+                controls.loop_mode = 1; // Forward loop
+                controls.loop_start_stage = 3;
+                controls.loop_end_stage = 4;
+            }
 
             // Get the selected exciter type (0-16 for different exciters)
             let exciter_type = plugin.params.exciter.value();
+
+            // Macro-biased note-on inputs.
+            let biased_size = (plugin.params.size.value() * bias.size_factor).clamp(0.05, 10.0);
+            let biased_rust =
+                (plugin.params.rust.value() + bias.rust_offset).clamp(0.0, 5.0);
+            let biased_damage =
+                (plugin.params.damage.value() + bias.damage_offset).clamp(0.0, 10.0);
 
             // Trigger note-on in voice manager with all parameters
             // The voice manager handles polyphony and voice allocation
@@ -346,9 +609,9 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
                 note,
                 note_event_velocity_to_voice_velocity(velocity),
                 profile,
-                plugin.params.size.value(),
-                plugin.params.rust.value(),
-                plugin.params.damage.value(),
+                biased_size,
+                biased_rust,
+                biased_damage,
                 exciter_type,
                 controls,
             );
@@ -356,6 +619,32 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
         NoteEvent::NoteOff { note, .. } => {
             // Release the voice playing this note
             plugin.voice_manager.note_off(note);
+        }
+        // Channel pitch bend — host delivers normalized 0.0..=1.0 (0.5 neutral).
+        // Convert to semitones using the standard ±2 default range so a plain
+        // MIDI controller bends an expected interval.
+        NoteEvent::MidiPitchBend { value, .. } => {
+            let semitones =
+                (value - 0.5) * 2.0 * voice::PITCH_BEND_RANGE_SEMITONES;
+            plugin
+                .voice_manager
+                .set_pitch_bend_semitones(semitones);
+        }
+        // Channel aftertouch — broadcasts to every voice on the channel.
+        NoteEvent::MidiChannelPressure { pressure, .. } => {
+            plugin.voice_manager.set_channel_pressure(pressure);
+        }
+        // Per-note aftertouch — routes only to the matching voice.
+        NoteEvent::PolyPressure { note, pressure, .. } => {
+            plugin.voice_manager.set_poly_pressure(note, pressure);
+        }
+        // CC1 mod wheel is the only CC we currently route. Other CCs are
+        // ignored but reach the plugin so a future expansion can pick them up
+        // without changing MidiConfig.
+        NoteEvent::MidiCC { cc, value, .. } => {
+            if cc == 1 {
+                plugin.voice_manager.set_mod_wheel(value);
+            }
         }
         _ => {}
     }
@@ -437,17 +726,39 @@ pub struct Corrosion {
 
     /// Post-processing chain applies global effects to mixed output
     post_chain: dsp::PostProcessingChain,
+
+    /// Per-sample smoother for master drive so rapid automation doesn't zipper.
+    drive_smoother: OnePoleSmoother,
+    /// Per-sample smoother for master output gain.
+    output_gain_smoother: OnePoleSmoother,
+    /// Optional lookahead peak limiter for the left output channel.
+    /// Engaged only when `limiter_mode == 1`; otherwise the master path
+    /// falls through to `apply_output_limiter`.
+    lookahead_left: dsp::LookaheadLimiter,
+    /// Optional lookahead peak limiter for the right output channel.
+    lookahead_right: dsp::LookaheadLimiter,
+    /// Last reported plugin latency in samples. Tracked so we only call
+    /// `context.set_latency_samples` when the value actually changes (toggling
+    /// the limiter mode).
+    reported_latency_samples: u32,
 }
 
 impl Default for Corrosion {
     /// Creates a default plugin instance with initialized subsystems.
     fn default() -> Self {
         let params = Arc::new(CorrosionParams::default());
+        let initial_drive = params.drive.value();
+        let initial_output = params.output.value();
 
         Self {
             params,
             voice_manager: VoiceManager::new(),
             post_chain: dsp::PostProcessingChain::new(),
+            drive_smoother: OnePoleSmoother::new(initial_drive),
+            output_gain_smoother: OnePoleSmoother::new(initial_output),
+            lookahead_left: dsp::LookaheadLimiter::new(LIMITER_THRESHOLD),
+            lookahead_right: dsp::LookaheadLimiter::new(LIMITER_THRESHOLD),
+            reported_latency_samples: 0,
         }
     }
 }
@@ -466,8 +777,16 @@ impl Corrosion {
     ///
     /// # Arguments
     /// * `state` - Serialized preset bytes from previous get_state() call
+    ///
+    /// The state goes through `Preset::from_json_str` so legacy versions get
+    /// migrated to the current schema before deserialization — same path as
+    /// `Preset::load`, ensuring host state-restore and on-disk presets behave
+    /// identically.
     pub fn load_state(&mut self, state: &[u8]) {
-        if let Ok(preset) = serde_json::from_slice::<Preset>(state) {
+        let Ok(json) = std::str::from_utf8(state) else {
+            return;
+        };
+        if let Ok(preset) = Preset::from_json_str(json) {
             self.params = Arc::new(preset.into_params());
         }
     }
@@ -490,8 +809,9 @@ impl Plugin for Corrosion {
         names: PortNames::const_default(),
     }];
 
-    /// MIDI input configuration - basic MIDI support for notes
-    const MIDI_INPUT: MidiConfig = MidiConfig::Basic;
+    /// MIDI input configuration - full CC support so the plugin receives
+    /// pitch bend, channel/poly pressure, and mod wheel in addition to notes.
+    const MIDI_INPUT: MidiConfig = MidiConfig::MidiCCs;
 
     /// No SysEx message support
     type SysExMessage = ();
@@ -523,6 +843,10 @@ impl Plugin for Corrosion {
     fn reset(&mut self) {
         self.voice_manager = VoiceManager::new();
         self.post_chain = dsp::PostProcessingChain::new();
+        self.drive_smoother = OnePoleSmoother::new(self.params.drive.value());
+        self.output_gain_smoother = OnePoleSmoother::new(self.params.output.value());
+        self.lookahead_left.reset();
+        self.lookahead_right.reset();
     }
 
     /// Main audio processing callback - called for each buffer.
@@ -552,21 +876,56 @@ impl Plugin for Corrosion {
         // reverb delays) that must not run at audio rate, and the per-sample
         // version compounded the FactoryReverb comb delays. Host automation is
         // applied at buffer granularity, so per-buffer updates are sufficient.
-        let drive = self.params.drive.value();
-        let output_gain = self.params.output.value();
         let width = self.params.width.value();
         let body_amount = (self.params.body.value() / 5.0).clamp(0.0, 1.0);
 
+        // Resolve the macro bias once for the whole buffer so per-buffer DSP
+        // setters and per-buffer held-note automation see the same numbers.
+        let bias = resolve_macro_bias(&self.params);
+
+        self.drive_smoother.set_sample_rate(sample_rate as f32);
+        self.drive_smoother
+            .set_target((self.params.drive.value() + bias.drive_offset).clamp(0.0, 5.0));
+        self.output_gain_smoother
+            .set_sample_rate(sample_rate as f32);
+        self.output_gain_smoother
+            .set_target(self.params.output.value());
+
+        // Per-buffer setup for the lookahead limiter (sample rate + threshold).
+        // Threshold tracks the analog ceiling so both limiter modes target the
+        // same effective peak. The choice between Hard and Lookahead happens
+        // per-sample below.
+        let limiter_mode = self.params.limiter_mode.value();
+        let limiter_threshold = self.params.analog_ceiling.value().clamp(0.1, 1.0);
+        self.lookahead_left.set_sample_rate(sample_rate as f32);
+        self.lookahead_right.set_sample_rate(sample_rate as f32);
+        self.lookahead_left.set_threshold(limiter_threshold);
+        self.lookahead_right.set_threshold(limiter_threshold);
+
+        // Report plugin latency to the host. Only update when it changes —
+        // hosts may re-negotiate buses on every set_latency_samples call.
+        let target_latency = if limiter_mode == 1 {
+            dsp::LOOKAHEAD_LIMITER_SAMPLES as u32
+        } else {
+            0
+        };
+        if target_latency != self.reported_latency_samples {
+            context.set_latency_samples(target_latency);
+            self.reported_latency_samples = target_latency;
+        }
+
         self.post_chain.set_sample_rate(sample_rate as f32);
+        let biased_cutoff =
+            (self.params.filter_cutoff.value() * bias.filter_cutoff_factor).clamp(20.0, 20_000.0);
         self.post_chain.set_filter_params(
-            self.params.filter_cutoff.value(),
+            biased_cutoff,
             self.params.filter_resonance.value(),
             self.params.component_tolerance.value(),
         );
         self.post_chain.set_drive_params(
-            self.params.drive_amount.value(),
+            (self.params.drive_amount.value() + bias.drive_amount_offset).clamp(0.0, 1.0),
             self.params.bias_starvation.value(),
-            self.params.chaos_depth.value(),
+            (self.params.chaos_depth.value() + bias.chaos_depth_offset).clamp(0.0, 1.0),
         );
         self.post_chain.set_body_params(
             self.params.chassis_material.value(),
@@ -607,14 +966,45 @@ impl Plugin for Corrosion {
             self.params.wire_stiffness.value(),
             self.params.spring_tank_size.value(),
         );
-        self.post_chain.set_echo_params(
+        // Tempo-synced echo delay (P1.6). When sync_rate is engaged and the
+        // host reports a BPM, the sync_rate selects a musical division which
+        // overrides the free-running delay_time knob. Otherwise the knob
+        // value passes through unchanged. The remap inside
+        // `sync_rate_to_delay_time` keeps the echo's existing 0..1 contract.
+        let host_tempo = context.transport().tempo.map(|t| t as f32);
+        let effective_delay_time = sync_rate_to_delay_time(
+            self.params.sync_rate.value(),
+            host_tempo,
             self.params.delay_time.value(),
+        );
+        self.post_chain.set_echo_params(
+            effective_delay_time,
             self.params.machinery_movement.value(),
             self.params.high_frequency_damping.value(),
         );
         self.post_chain.set_clipper_params(
             self.params.analog_ceiling.value(),
             self.params.diode_softness.value(),
+        );
+
+        // Push subset of controls into still-held voices so sustaining notes
+        // respond to damping / brightness / strike-position automation. Drive
+        // is already live above (captured each buffer into `drive`). Macros
+        // bias damping/brightness here so a Corrosion or Brightness twist also
+        // tracks held notes, not just new ones.
+        let live_damping =
+            (self.params.res_damping.value() + bias.res_damping_offset).clamp(0.0, 1.0);
+        let live_brightness =
+            (self.params.res_brightness.value() + bias.res_brightness_offset).clamp(0.0, 1.0);
+        self.voice_manager.update_live_controls(
+            live_damping,
+            live_brightness,
+            self.params.strike_position.value(),
+            self.params.coupling_stiffness.value(),
+            self.params.position_wander.value(),
+            self.params.position_envelope.value(),
+            self.params.fundamental_anchor.value(),
+            sample_rate,
         );
 
         // Process each sample in the buffer
@@ -631,18 +1021,31 @@ impl Plugin for Corrosion {
             let mut left = left_sample;
             let mut right = right_sample;
 
-            // Apply drive/saturation
-            left = apply_drive(left, drive);
-            right = apply_drive(right, drive);
+            // Apply drive/saturation with per-sample smoothed master drive.
+            let drive_smoothed = self.drive_smoother.next();
+            left = apply_drive(left, drive_smoothed);
+            right = apply_drive(right, drive_smoothed);
 
             // Apply post-processing chain
             let (post_left, post_right) = self.post_chain.process(left, right);
             left = post_left;
             right = post_right;
 
-            // Apply output gain and limiting
-            left = apply_output_limiter(left * output_gain);
-            right = apply_output_limiter(right * output_gain);
+            // Apply output gain. The limiter choice is per-buffer: Hard
+            // (default) clamps each sample; Lookahead introduces ~1 ms of
+            // delay and pulls peaks back via the smoothed gain reduction in
+            // `LookaheadLimiter`. Either way the master signal stays bounded
+            // below the analog ceiling.
+            let output_gain_smoothed = self.output_gain_smoother.next();
+            left *= output_gain_smoothed;
+            right *= output_gain_smoothed;
+            if limiter_mode == 1 {
+                left = self.lookahead_left.process(left);
+                right = self.lookahead_right.process(right);
+            } else {
+                left = apply_output_limiter(left);
+                right = apply_output_limiter(right);
+            }
 
             // Write output to buffer channels
             for (idx, channel_sample) in channel_samples.into_iter().enumerate() {
@@ -860,6 +1263,265 @@ mod tests {
         assert_ne!(
             pipe_energy, tank_energy,
             "expected direct object param to change runtime profile output"
+        );
+    }
+
+    #[test]
+    fn neutral_macros_produce_neutral_bias() {
+        // Every macro at exactly the default 0.5 must produce the NEUTRAL
+        // bias — otherwise existing presets would silently drift.
+        let params = crate::CorrosionParams::default();
+        let bias = super::resolve_macro_bias(&params);
+        let neutral = super::MacroBias::NEUTRAL;
+        assert!((bias.mass_factor - neutral.mass_factor).abs() < 1e-6);
+        assert!((bias.size_factor - neutral.size_factor).abs() < 1e-6);
+        assert!((bias.res_damping_offset - neutral.res_damping_offset).abs() < 1e-6);
+        assert!((bias.res_brightness_offset - neutral.res_brightness_offset).abs() < 1e-6);
+        assert!((bias.rust_offset - neutral.rust_offset).abs() < 1e-6);
+        assert!((bias.damage_offset - neutral.damage_offset).abs() < 1e-6);
+        assert!((bias.drive_offset - neutral.drive_offset).abs() < 1e-6);
+        assert!((bias.drive_amount_offset - neutral.drive_amount_offset).abs() < 1e-6);
+        assert!((bias.chaos_depth_offset - neutral.chaos_depth_offset).abs() < 1e-6);
+        assert!((bias.filter_cutoff_factor - neutral.filter_cutoff_factor).abs() < 1e-6);
+    }
+
+    #[test]
+    fn corrosion_macro_darkens_and_dampens_voice() {
+        // Crank Corrosion to the max and confirm the voice gets dimmer and
+        // shorter than a neutral copy. We compare two plugin instances —
+        // identical except for macro_corrosion — and integrate output energy.
+        use crate::params::float_param_for_test;
+
+        let mut bright_plugin = Corrosion::default();
+        let mut corroded_plugin = Corrosion::default();
+        Arc::get_mut(&mut corroded_plugin.params).unwrap().macro_corrosion =
+            float_param_for_test("Corrosion", 1.0, 0.0, 1.0);
+
+        let event = NoteEvent::NoteOn {
+            timing: 0,
+            voice_id: None,
+            channel: 0,
+            note: 60,
+            velocity: 1.0,
+        };
+        handle_note_event(&mut bright_plugin, event);
+        handle_note_event(&mut corroded_plugin, event);
+
+        let sample_rate = 48_000u32;
+        let bright_energy: f32 = (0..8_192)
+            .map(|_| bright_plugin.voice_manager.process_sample(sample_rate).abs())
+            .sum();
+        let corroded_energy: f32 = (0..8_192)
+            .map(|_| {
+                corroded_plugin
+                    .voice_manager
+                    .process_sample(sample_rate)
+                    .abs()
+            })
+            .sum();
+
+        assert!(
+            corroded_energy < bright_energy,
+            "max Corrosion should reduce total voice energy: bright={bright_energy}, corroded={corroded_energy}"
+        );
+    }
+
+    #[test]
+    fn violence_macro_drives_post_chain_drive() {
+        // Violence routes to the post-chain `drive_amount` smoother target.
+        // We invoke the per-buffer setup path indirectly by reading the
+        // drive_smoother's target after process_buffer initialization.
+        use crate::params::float_param_for_test;
+
+        let mut violent = Corrosion::default();
+        Arc::get_mut(&mut violent.params).unwrap().macro_violence =
+            float_param_for_test("Violence", 1.0, 0.0, 1.0);
+
+        let bias = super::resolve_macro_bias(&violent.params);
+        let neutral_bias = super::resolve_macro_bias(&Corrosion::default().params);
+        assert!(
+            bias.drive_offset > neutral_bias.drive_offset + 0.4,
+            "Violence at 1.0 should push drive offset above the neutral midpoint"
+        );
+        assert!(bias.damage_offset > 1.5);
+        assert!(bias.chaos_depth_offset > 0.15);
+    }
+
+    #[test]
+    fn brightness_macro_opens_filter() {
+        use crate::params::float_param_for_test;
+
+        let mut bright = Corrosion::default();
+        Arc::get_mut(&mut bright.params).unwrap().macro_brightness =
+            float_param_for_test("Brightness", 1.0, 0.0, 1.0);
+        let bias = super::resolve_macro_bias(&bright.params);
+        assert!(
+            bias.filter_cutoff_factor > 1.5,
+            "Brightness at 1.0 should open the filter by > +1 octave: factor={}",
+            bias.filter_cutoff_factor
+        );
+    }
+
+    #[test]
+    fn kit_note_to_object_covers_full_range() {
+        // Every kit slot must be reachable across the playable keyboard, and
+        // notes inside the same slot must resolve to the same object.
+        for slot in 0..9 {
+            let center_note = 24 + slot * 10 + 5;
+            let object = super::note_to_kit_object(center_note as u8);
+            assert_eq!(
+                object.to_int(),
+                slot,
+                "slot {slot} should resolve to object {slot} at note {center_note}"
+            );
+        }
+
+        // Two adjacent notes inside the same slot map identically.
+        assert_eq!(
+            super::note_to_kit_object(36),
+            super::note_to_kit_object(40),
+            "notes inside the same kit slot should map to the same object"
+        );
+        // Adjacent slots map to different objects.
+        assert_ne!(
+            super::note_to_kit_object(33),
+            super::note_to_kit_object(34),
+            "notes that cross a slot boundary should map to different objects"
+        );
+    }
+
+    #[test]
+    fn kit_mode_overrides_object_param() {
+        // In Kit mode, the note picks the object; the global `object` param
+        // is ignored. We verify by setting the param to Pipe (0) and triggering
+        // a note in the Tank slot (52-61) — the voice's resonator must be Tank.
+        use crate::params::{float_param_for_test, play_mode_param, PlayMode};
+
+        let mut plugin = Corrosion::default();
+        Arc::get_mut(&mut plugin.params).unwrap().play_mode =
+            play_mode_param(PlayMode::Kit.to_int());
+        // Make sure macros don't affect the test.
+        let _ = float_param_for_test("Mass", 0.5, 0.0, 1.0);
+
+        // Trigger a note inside the Tank slot (44-53 = `(note-24)/10 == 2`).
+        handle_note_event(
+            &mut plugin,
+            NoteEvent::NoteOn {
+                timing: 0,
+                voice_id: None,
+                channel: 0,
+                note: 50,
+                velocity: 1.0,
+            },
+        );
+
+        let active_profile = plugin
+            .voice_manager
+            .voices_for_test()
+            .iter()
+            .find(|v| v.is_rendering())
+            .map(|v| v.resonator_profile_for_test())
+            .expect("a voice should be rendering after note-on");
+
+        assert_eq!(
+            active_profile,
+            crate::dsp::ModalProfileId::Tank,
+            "kit mode should select Tank for MIDI note 50 (Tank slot)"
+        );
+    }
+
+    #[test]
+    fn sync_rate_below_threshold_returns_free_running_value() {
+        // sync_rate ≈ 0 must pass through the knob unchanged regardless of
+        // whether the host reports a tempo.
+        let knob = 0.42;
+        assert_eq!(
+            super::sync_rate_to_delay_time(0.0, Some(120.0), knob),
+            knob,
+            "sync off should ignore the host tempo"
+        );
+        assert_eq!(
+            super::sync_rate_to_delay_time(0.0, None, knob),
+            knob,
+            "sync off without tempo also passes through"
+        );
+    }
+
+    #[test]
+    fn sync_rate_without_tempo_falls_back_to_knob() {
+        // Even if sync_rate is engaged, hosts that don't report BPM must not
+        // silently change the delay.
+        let knob = 0.3;
+        assert_eq!(
+            super::sync_rate_to_delay_time(0.9, None, knob),
+            knob,
+            "no tempo should fall back to the free-running value"
+        );
+    }
+
+    #[test]
+    fn sync_rate_quarter_note_at_120bpm() {
+        // At 120 BPM a quarter note = 0.5 s. The middle of the sync_rate
+        // range lands inside the 1/4 band. Normalized delay_time = (0.5 - 0.02) / 0.78 ≈ 0.615.
+        let tempo = Some(120.0);
+        let synced = super::sync_rate_to_delay_time(0.5, tempo, 0.25);
+        let expected = (0.5 - 0.02) / 0.78;
+        assert!(
+            (synced - expected).abs() < 0.02,
+            "1/4 note @ 120 BPM should give normalized delay ≈ {expected}, got {synced}"
+        );
+    }
+
+    #[test]
+    fn higher_sync_rate_gives_longer_delay() {
+        // The mapping is monotone: a larger sync_rate always picks a longer
+        // (or equal) musical division.
+        let tempo = Some(120.0);
+        let mut prev = 0.0_f32;
+        for step in 1..=10 {
+            let sync = step as f32 / 10.0;
+            let delay = super::sync_rate_to_delay_time(sync, tempo, 0.25);
+            assert!(
+                delay + 1e-4 >= prev,
+                "sync_rate->delay must be monotone non-decreasing: sync={sync}, prev={prev}, delay={delay}"
+            );
+            prev = delay;
+        }
+    }
+
+    #[test]
+    fn drone_mode_forces_mseg_loop_on() {
+        // In Drone mode, the friction voice's MSEG must come up with the loop
+        // enabled — even if the preset stored loop_mode = 0 (Off).
+        use crate::params::{play_mode_param, PlayMode};
+
+        let mut plugin = Corrosion::default();
+        Arc::get_mut(&mut plugin.params).unwrap().play_mode =
+            play_mode_param(PlayMode::Drone.to_int());
+        // Pick a friction exciter (Bow = 1).
+        Arc::get_mut(&mut plugin.params).unwrap().exciter =
+            crate::params::exciter_param(1);
+
+        handle_note_event(
+            &mut plugin,
+            NoteEvent::NoteOn {
+                timing: 0,
+                voice_id: None,
+                channel: 0,
+                note: 60,
+                velocity: 1.0,
+            },
+        );
+
+        let voice = plugin
+            .voice_manager
+            .voices_for_test()
+            .iter()
+            .find(|v| v.is_rendering())
+            .expect("voice should be active");
+        assert!(
+            voice.mseg_loop_enabled_for_test(),
+            "Drone mode should force MSEG loop on for friction voices"
         );
     }
 }

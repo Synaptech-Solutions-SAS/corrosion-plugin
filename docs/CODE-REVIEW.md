@@ -1,7 +1,7 @@
 # Corrosion — Critical Code Review & Doc Conformance
 
 **Scope:** full `src/` tree except `src/presets/` (excluded by request).
-**Date:** 2026-05.
+**Date:** 2026-05-27.
 **Method:** read of every module in the audio path plus build/test infra, cross-checked
 against `docs/detailed-specs/`, `docs/corrosion_plugin_prd_and_specs.md`, and
 `docs/master-prompt.md`.

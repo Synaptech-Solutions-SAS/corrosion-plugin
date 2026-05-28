@@ -282,6 +282,14 @@ exciters and envelope velocity response.
 `docs/detailed-specs/post-processing.md`; the module docstrings say as much. See
 `docs/code-review.md` §"Post-processing conformance" for the exact gap per stage.
 
+> **Decision (2026-05-28).** The approximations described here are the shipped
+> contract. The detailed-specs files are aspirational design notes; promoting
+> any single stage to its full PDE/FDTD / HRIR description would be a feature
+> proposal, not a finish-the-partial task. The cutoff/drive smoothers added in
+> the P1 sweep live inside `WdfLadderFilter` and `LorenzDrive` and ramp at
+> audio rate (~20 ms tau) with first-call snap so static-config flows are
+> unchanged.
+
 Stage summary (as implemented):
 
 | Stage | Reality |
@@ -355,8 +363,11 @@ bundle/validator flow uses `x86_64-unknown-linux-gnu`.
   parameter setters — block processing remains a future optimization.
 - **All exciters resident per voice.** Trades memory (~all 16 structs × 8 voices)
   for allocation-free, branch-only dispatch.
-- **Resonator mode count is fixed per profile** (roughly 6–12 base modes). Quality
-  modes do not scale mode count; only post-processing cost is scaled.
+- **Resonator mode count scales with QualityMode.** Each profile reports a base
+  mode count (roughly 6–12); the active QualityMode multiplies that at note-on
+  (Eco 0.5× / Normal 1.0× / High 1.5× / Render 2.0×), clamped to ≥1 mode. The
+  multiplier is snapshotted into `VoiceControls.mode_count_scale` and only
+  re-evaluates on the next note-on.
 - **Approximate post DSP.** The post/space/output stages are intentionally
   cheaper than `detailed-specs/post-processing.md`. Treat that spec as a design
   target, not a description of shipped behavior.

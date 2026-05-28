@@ -14,6 +14,12 @@ pub const MAX_VOICES: usize = 8;
 pub struct VoiceManager {
     voices: [Voice; MAX_VOICES],
     frame_counter: u64,
+    /// Channel-wide MIDI expression state. Stored here so a note-on after a
+    /// pitch-bend / aftertouch / CC1 event still picks up the active channel
+    /// values, not just notes that were already playing when the event arrived.
+    pitch_bend_semitones: f32,
+    channel_pressure: f32,
+    mod_wheel: f32,
 }
 
 /// Map a voice peak-hold value to a steal priority score.
@@ -48,6 +54,9 @@ impl VoiceManager {
                 Voice::new(),
             ],
             frame_counter: 0,
+            pitch_bend_semitones: 0.0,
+            channel_pressure: 0.0,
+            mod_wheel: 0.0,
         }
     }
 
@@ -117,6 +126,7 @@ impl VoiceManager {
         // First try: find an inactive voice; this keeps the common case
         // deterministic and avoids unnecessary stealing.
         if let Some(idx) = self.voices.iter().position(|v| !v.is_rendering()) {
+            self.apply_channel_expression_to(idx);
             self.voices[idx].note_on_with_controls(
                 note,
                 velocity,
@@ -154,6 +164,7 @@ impl VoiceManager {
             .map(|(idx, _)| idx);
 
         if let Some(idx) = steal_idx {
+            self.apply_channel_expression_to(idx);
             self.voices[idx].note_on_with_controls(
                 note,
                 velocity,
@@ -165,6 +176,109 @@ impl VoiceManager {
                 exciter_type,
                 controls,
             );
+        }
+    }
+
+    /// Seed a freshly-claimed slot with the current channel expression state
+    /// so a pitch-bent / pressed / mod-wheeled context isn't lost when a new
+    /// note starts. Channel pressure and mod wheel are persistent on the
+    /// channel; the per-note poly pressure resets inside `Voice::note_on`.
+    fn apply_channel_expression_to(&mut self, idx: usize) {
+        let voice = &mut self.voices[idx];
+        voice.set_channel_pressure(self.channel_pressure);
+        voice.set_mod_wheel(self.mod_wheel);
+        // The new resonator that note_on builds will pick up the bend below;
+        // tracking the semitone value here lets the voice apply it during
+        // note_on_with_controls.
+        voice.set_pitch_bend_semitones(self.pitch_bend_semitones);
+    }
+
+    /// Apply a channel pitch bend (semitones) to every voice on this channel.
+    ///
+    /// Hosts deliver pitch bend as a normalized `0.0..=1.0` value; convert to
+    /// semitones with `voice::PITCH_BEND_RANGE_SEMITONES` before calling.
+    pub fn set_pitch_bend_semitones(&mut self, semitones: f32) {
+        self.pitch_bend_semitones = semitones;
+        for voice in &mut self.voices {
+            if voice.is_rendering() {
+                voice.set_pitch_bend_semitones(semitones);
+            }
+        }
+    }
+
+    /// Apply channel aftertouch (`MidiChannelPressure`) to every voice.
+    pub fn set_channel_pressure(&mut self, pressure: f32) {
+        self.channel_pressure = pressure.clamp(0.0, 1.0);
+        for voice in &mut self.voices {
+            if voice.is_rendering() {
+                voice.set_channel_pressure(self.channel_pressure);
+            }
+        }
+    }
+
+    /// Apply CC1 mod wheel to every voice on the channel.
+    pub fn set_mod_wheel(&mut self, value: f32) {
+        self.mod_wheel = value.clamp(0.0, 1.0);
+        for voice in &mut self.voices {
+            if voice.is_rendering() {
+                voice.set_mod_wheel(self.mod_wheel);
+            }
+        }
+    }
+
+    /// Test-only accessor for the underlying voice pool. Crate-internal so
+    /// the lib-level integration tests can inspect voice state without
+    /// widening the public surface.
+    #[cfg(test)]
+    pub(crate) fn voices_for_test(&self) -> &[Voice; MAX_VOICES] {
+        &self.voices
+    }
+
+    /// Apply polyphonic aftertouch to the voice currently playing `note`.
+    ///
+    /// Silently no-op if no voice is playing that note — matches host
+    /// semantics where poly pressure for a released note is meaningless.
+    pub fn set_poly_pressure(&mut self, note: u8, pressure: f32) {
+        for voice in &mut self.voices {
+            if voice.is_rendering() && voice.note() == note {
+                voice.set_poly_pressure(pressure);
+                break;
+            }
+        }
+    }
+
+    /// Apply held-note automation to every active voice.
+    ///
+    /// Held-note (still-active) voices receive new damping/brightness/strike-
+    /// position values once per buffer; tail voices keep their note-on snapshot
+    /// so they decay with the timbre they were captured with.
+    // Mirrors the per-buffer host parameter shape; collapsing into a struct
+    // would be a broader refactor.
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_live_controls(
+        &mut self,
+        damping: f32,
+        brightness: f32,
+        strike_position: f32,
+        coupling_stiffness: f32,
+        position_wander: f32,
+        position_envelope: f32,
+        fundamental_anchor: f32,
+        sample_rate: u32,
+    ) {
+        for voice in &mut self.voices {
+            if voice.is_active() {
+                voice.update_live_controls(
+                    damping,
+                    brightness,
+                    strike_position,
+                    coupling_stiffness,
+                    position_wander,
+                    position_envelope,
+                    fundamental_anchor,
+                    sample_rate,
+                );
+            }
         }
     }
 
@@ -498,5 +612,86 @@ mod tests {
         let non_finite_peak = f32::NAN;
 
         assert!(comparable_peak_hold(non_finite_peak) < comparable_peak_hold(finite_peak));
+    }
+
+    #[test]
+    fn channel_pitch_bend_reaches_all_active_voices() {
+        // Two notes are playing. A pitch bend event should retune both
+        // voices' resonators, not just one.
+        let mut manager = VoiceManager::new();
+        manager.note_on(60, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 2);
+        manager.note_on(64, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 2);
+
+        let baseline_freqs: Vec<f32> = manager
+            .voices
+            .iter()
+            .filter(|v| v.is_rendering())
+            .map(|v| v.resonator.modes[0].spec.frequency_hz)
+            .collect();
+
+        manager.set_pitch_bend_semitones(12.0);
+
+        let bent_freqs: Vec<f32> = manager
+            .voices
+            .iter()
+            .filter(|v| v.is_rendering())
+            .map(|v| v.resonator.modes[0].spec.frequency_hz)
+            .collect();
+
+        assert_eq!(baseline_freqs.len(), 2);
+        assert_eq!(bent_freqs.len(), 2);
+        for (b, post) in baseline_freqs.iter().zip(bent_freqs.iter()) {
+            assert!(
+                (post - b * 2.0).abs() < b * 0.01,
+                "octave bend should reach every voice: base={b}, post={post}"
+            );
+        }
+    }
+
+    #[test]
+    fn pitch_bend_persists_for_new_notes_on_channel() {
+        // A pitch bend held on the channel must apply to notes triggered after
+        // the bend event (mirrors how a DAW automates pitch wheel during a run).
+        let mut manager = VoiceManager::new();
+        manager.set_pitch_bend_semitones(7.0);
+        manager.note_on(60, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 2);
+
+        let voice = manager
+            .voices
+            .iter()
+            .find(|v| v.is_rendering())
+            .expect("a voice should be rendering");
+        let unbent = crate::voice::midi_to_hz(60);
+        let actual = voice.resonator.modes[0].spec.frequency_hz;
+        // First mode is roughly the fundamental; bend factor ≈ 1.498 for +7st.
+        assert!(
+            actual > unbent * 1.4,
+            "new notes should inherit the channel bend: base={unbent}, actual={actual}"
+        );
+    }
+
+    #[test]
+    fn poly_pressure_targets_only_matching_note() {
+        let mut manager = VoiceManager::new();
+        manager.note_on(60, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 2);
+        manager.note_on(64, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 2);
+
+        manager.set_poly_pressure(60, 1.0);
+
+        let target = manager
+            .voices
+            .iter()
+            .find(|v| v.is_rendering() && v.note() == 60)
+            .expect("note 60 should be playing");
+        let other = manager
+            .voices
+            .iter()
+            .find(|v| v.is_rendering() && v.note() == 64)
+            .expect("note 64 should be playing");
+
+        assert!(
+            target.expression_gain() > other.expression_gain() + 0.1,
+            "poly pressure should only reach the matching note"
+        );
     }
 }

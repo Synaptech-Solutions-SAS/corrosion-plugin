@@ -26,6 +26,7 @@ fn preset_roundtrip_save_and_load() {
         width: 0.5,
         body: 0.2,
         quality_mode: 1,
+        play_mode: 0,
         extra: PresetParameters::default(),
     };
 
@@ -74,6 +75,7 @@ fn expanded_parameters_roundtrip() {
         width: 2.0,
         body: 4.0,
         quality_mode: 3,
+        play_mode: 0,
         extra: PresetParameters::default(),
     };
     preset.extra.drive_amount = 3.2;
@@ -178,6 +180,7 @@ fn quality_mode_preset_roundtrip() {
         width: 0.0,
         body: 0.0,
         quality_mode: 0,
+        play_mode: 0,
         extra: PresetParameters::default(),
     };
 
@@ -221,4 +224,95 @@ fn legacy_complex_algo_field_is_ignored_on_load() {
     assert_eq!(params.plate_aspect.value(), 1.0);
     assert_eq!(params.pipe_diameter.value(), 0.5);
     let _ = fs::remove_file(path);
+}
+
+#[test]
+fn unstamped_legacy_preset_migrates_to_current_schema() {
+    // A preset saved before versioning existed (no `version` field). The
+    // migration step must stamp it to the current schema and the typed
+    // deserialization must succeed with neutral defaults filled in.
+    let json = r#"
+    {
+        "name": "Unstamped",
+        "object": "Pipe",
+        "exciter": 2,
+        "size": 1.0,
+        "rust": 0.0,
+        "damage": 0.0,
+        "drive": 0.0,
+        "output": 1.0,
+        "width": 0.5,
+        "body": 0.0
+    }
+    "#;
+    let loaded = Preset::from_json_str(json).unwrap();
+    let params = loaded.into_params();
+    // Macros default to the neutral midpoint.
+    assert!((params.macro_mass.value() - 0.5).abs() < 1e-6);
+    assert!((params.macro_corrosion.value() - 0.5).abs() < 1e-6);
+    assert!((params.macro_violence.value() - 0.5).abs() < 1e-6);
+    assert!((params.macro_brightness.value() - 0.5).abs() < 1e-6);
+    // Play mode defaults to Tonal (0).
+    assert_eq!(params.play_mode.value(), 0);
+    // Limiter mode defaults to Hard (0).
+    assert_eq!(params.limiter_mode.value(), 0);
+}
+
+#[test]
+fn v3_preset_migrates_to_v4_without_dropping_fields() {
+    // A v3 preset is the most common form on disk today. Loading it through
+    // the migration must reach v4 and preserve every v3 field unchanged.
+    let json = r#"
+    {
+        "name": "From V3",
+        "version": "3",
+        "object": "Tank",
+        "exciter": 7,
+        "size": 1.5,
+        "rust": 0.7,
+        "damage": 1.2,
+        "drive": 0.3,
+        "output": 1.0,
+        "width": 0.5,
+        "body": 1.0,
+        "quality_mode": 2
+    }
+    "#;
+    let loaded = Preset::from_json_str(json).unwrap();
+    assert_eq!(loaded.size, 1.5);
+    assert_eq!(loaded.rust, 0.7);
+    assert_eq!(loaded.damage, 1.2);
+    assert_eq!(loaded.quality_mode, 2);
+    // New schema-level fields show up at their defaults.
+    assert_eq!(loaded.play_mode, 0);
+    assert!((loaded.extra.macro_mass - 0.5).abs() < 1e-6);
+    assert!((loaded.extra.macro_corrosion - 0.5).abs() < 1e-6);
+}
+
+#[test]
+fn migration_idempotent_on_current_version() {
+    // Calling the migration on a current-version preset must be a no-op
+    // (stable shape, stable version stamp). Re-serializing after a round
+    // trip must match the original.
+    let json = r#"
+    {
+        "name": "Current",
+        "version": "4",
+        "object": "Pipe",
+        "exciter": 2,
+        "size": 1.0,
+        "rust": 0.0,
+        "damage": 0.0,
+        "drive": 0.0,
+        "output": 1.0,
+        "width": 0.5,
+        "body": 0.0,
+        "quality_mode": 1,
+        "play_mode": 0
+    }
+    "#;
+    let first = Preset::from_json_str(json).unwrap();
+    let re_serialized = serde_json::to_string(&first).unwrap();
+    let second = Preset::from_json_str(&re_serialized).unwrap();
+    assert_eq!(first, second, "migration must be idempotent on v4 input");
 }

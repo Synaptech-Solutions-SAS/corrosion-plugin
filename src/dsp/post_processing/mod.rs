@@ -4,6 +4,7 @@
 //! filtering, drive, body resonance, stereo spread, space, and final limiting.
 pub mod fem_body;
 pub mod hrtf_spread;
+pub mod lookahead_limiter;
 pub mod lorenz_drive;
 pub mod oversampled_clipper;
 pub mod post_chain;
@@ -14,6 +15,8 @@ pub mod wdf_filter;
 pub use fem_body::FemBodyResonator;
 /// Stereo spreader that approximates listener-dependent width and proximity.
 pub use hrtf_spread::HrtfSpread;
+/// Short-lookahead peak limiter alternative to the hard clamp.
+pub use lookahead_limiter::LookaheadLimiter;
 /// Chaotic drive stage used before body and spatial processing.
 pub use lorenz_drive::LorenzDrive;
 /// Final oversampled clipper / limiter stage.
