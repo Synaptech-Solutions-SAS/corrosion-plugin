@@ -124,10 +124,24 @@ enum ExciterControlId {
 
 #[derive(Clone, Copy)]
 enum ResonatorControlId {
+    // Global controls shared across objects.
     Size,
     Damping,
-    Brightness,
-    Thickness,
+    // Curated per-object character controls (see docs/backlog.md).
+    PipeDiameter,
+    PlateAspect,
+    PlateStiffness,
+    TankVolume,
+    TankCavityMix,
+    ChainLinkMass,
+    ChainInstability,
+    BeamShear,
+    CableBraid,
+    CableTensionDrop,
+    SpringDispersion,
+    SpringSlosh,
+    SheetThinness,
+    CogDissonance,
 }
 
 #[derive(Clone, Copy)]
@@ -563,7 +577,7 @@ const PIPE_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
         max: 10.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Brightness,
+        id: ResonatorControlId::PipeDiameter,
         label: "Tube Diameter",
         min: 0.0,
         max: 1.0,
@@ -583,33 +597,33 @@ const PLATE_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
         max: 10.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Damping,
-        label: "Aspect Ratio",
-        min: 0.0,
-        max: 1.0,
+        id: ResonatorControlId::PlateAspect,
+        label: "Plate Aspect",
+        min: 0.1,
+        max: 4.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Brightness,
-        label: "Metal Stiffness",
-        min: 0.0,
-        max: 1.0,
+        id: ResonatorControlId::PlateStiffness,
+        label: "Plate Stiffness",
+        min: 0.25,
+        max: 3.0,
     },
 ];
 const TANK_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
     ResonatorControlSpec {
         id: ResonatorControlId::Size,
-        label: "Tank Volume",
+        label: "Tank Size",
         min: 0.05,
         max: 10.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Thickness,
-        label: "Wall Thickness",
+        id: ResonatorControlId::TankVolume,
+        label: "Tank Volume",
         min: 0.0,
         max: 1.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Brightness,
+        id: ResonatorControlId::TankCavityMix,
         label: "Cavity Mix",
         min: 0.0,
         max: 1.0,
@@ -624,18 +638,18 @@ const TANK_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
 const CHAIN_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
     ResonatorControlSpec {
         id: ResonatorControlId::Size,
-        label: "Link Mass",
+        label: "Chain Size",
         min: 0.05,
         max: 10.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Thickness,
-        label: "Chain Length",
-        min: 0.0,
+        id: ResonatorControlId::ChainLinkMass,
+        label: "Link Mass",
+        min: 0.1,
         max: 1.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Brightness,
+        id: ResonatorControlId::ChainInstability,
         label: "Instability",
         min: 0.0,
         max: 1.0,
@@ -655,7 +669,7 @@ const IBEAM_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
         max: 10.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Brightness,
+        id: ResonatorControlId::BeamShear,
         label: "Shear Density",
         min: 0.0,
         max: 1.0,
@@ -675,13 +689,13 @@ const TAUT_CABLE_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
         max: 10.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Brightness,
+        id: ResonatorControlId::CableBraid,
         label: "Braid Stiffness",
         min: 0.0,
         max: 1.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Damping,
+        id: ResonatorControlId::CableTensionDrop,
         label: "Tension Drop",
         min: 0.0,
         max: 1.0,
@@ -695,13 +709,13 @@ const COIL_SPRING_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
         max: 10.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Brightness,
+        id: ResonatorControlId::SpringDispersion,
         label: "Dispersion Chirp",
         min: 0.0,
         max: 1.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Damping,
+        id: ResonatorControlId::SpringSlosh,
         label: "Spring Slosh",
         min: 0.0,
         max: 1.0,
@@ -715,7 +729,7 @@ const SHEET_METAL_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
         max: 10.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Thickness,
+        id: ResonatorControlId::SheetThinness,
         label: "Metal Thinness",
         min: 0.0,
         max: 1.0,
@@ -735,13 +749,13 @@ const INDUSTRIAL_COG_RESONATOR_CONTROLS: &[ResonatorControlSpec] = &[
         max: 10.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Brightness,
+        id: ResonatorControlId::CogDissonance,
         label: "Tooth Dissonance",
         min: 0.0,
         max: 1.0,
     },
     ResonatorControlSpec {
-        id: ResonatorControlId::Thickness,
+        id: ResonatorControlId::Damping,
         label: "Blade Thickness",
         min: 0.0,
         max: 1.0,
@@ -1924,7 +1938,6 @@ fn apply_preset(params: &CorrosionParams, setter: &ParamSetter, preset: &Preset)
 
     set_int!(object);
     set_int!(exciter);
-    set_int!(complex_algo);
     set_int!(quality_mode);
     set_int!(ui_scale);
     set_int!(loop_mode);
@@ -2028,6 +2041,20 @@ fn apply_preset(params: &CorrosionParams, setter: &ParamSetter, preset: &Preset)
     set_float!(thickness);
     set_float!(heat);
     set_float!(sludge);
+    set_float!(pipe_diameter);
+    set_float!(plate_aspect);
+    set_float!(plate_stiffness);
+    set_float!(tank_volume);
+    set_float!(tank_cavity_mix);
+    set_float!(chain_link_mass);
+    set_float!(chain_instability);
+    set_float!(beam_shear);
+    set_float!(cable_braid);
+    set_float!(cable_tension_drop);
+    set_float!(spring_dispersion);
+    set_float!(spring_slosh);
+    set_float!(sheet_thinness);
+    set_float!(cog_dissonance);
     set_float!(filter_cutoff);
     set_float!(filter_resonance);
     set_float!(component_tolerance);
@@ -2539,18 +2566,6 @@ fn render_resonator_column(
                 .size(width_pct(scale, 0.0074074073))
                 .color(MUTED_GREY),
         );
-        let mut complex_algo_enabled = params.complex_algo.value() != 0;
-        if ui
-            .checkbox(
-                &mut complex_algo_enabled,
-                egui::RichText::new("Complex Algo").size(width_pct(scale, 0.007870371)),
-            )
-            .changed()
-        {
-            setter.begin_set_parameter(&params.complex_algo);
-            setter.set_parameter(&params.complex_algo, i32::from(complex_algo_enabled));
-            setter.end_set_parameter(&params.complex_algo);
-        }
         ui.add_space(height_pct(scale, 0.0052083335));
 
         // Resonator controls (knobs)
@@ -3324,8 +3339,20 @@ fn resonator_param_ref(params: &CorrosionParams, id: ResonatorControlId) -> &Flo
     match id {
         ResonatorControlId::Size => &params.size,
         ResonatorControlId::Damping => &params.res_damping,
-        ResonatorControlId::Brightness => &params.res_brightness,
-        ResonatorControlId::Thickness => &params.thickness,
+        ResonatorControlId::PipeDiameter => &params.pipe_diameter,
+        ResonatorControlId::PlateAspect => &params.plate_aspect,
+        ResonatorControlId::PlateStiffness => &params.plate_stiffness,
+        ResonatorControlId::TankVolume => &params.tank_volume,
+        ResonatorControlId::TankCavityMix => &params.tank_cavity_mix,
+        ResonatorControlId::ChainLinkMass => &params.chain_link_mass,
+        ResonatorControlId::ChainInstability => &params.chain_instability,
+        ResonatorControlId::BeamShear => &params.beam_shear,
+        ResonatorControlId::CableBraid => &params.cable_braid,
+        ResonatorControlId::CableTensionDrop => &params.cable_tension_drop,
+        ResonatorControlId::SpringDispersion => &params.spring_dispersion,
+        ResonatorControlId::SpringSlosh => &params.spring_slosh,
+        ResonatorControlId::SheetThinness => &params.sheet_thinness,
+        ResonatorControlId::CogDissonance => &params.cog_dissonance,
     }
 }
 

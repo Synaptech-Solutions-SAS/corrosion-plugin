@@ -1,26 +1,25 @@
-> **Implementation status (2026-05): IMPLEMENTED, with an approved consolidation
-> pending.** All 9 modal objects below ship. Today there are two construction
-> paths: the default profile-table path (curated `ModalModeSpec` tables in
-> `src/dsp/profiles/`) and the algorithmic path below (`complex_algo = 1`,
-> per-object generators in `src/dsp/resonators/`). Both feed a bank of second-order
-> modes (`y[n] = b0·x − a1·y1 − a2·y2`) in `src/dsp/resonators/core.rs`. Mode counts
-> are fixed per profile (~6–12 base modes) and are **not** scaled by quality mode.
+> **Implementation status (2026-05-27): IMPLEMENTED — algorithmic-only.** All 9
+> modal objects below ship through a single construction path: the per-object
+> algorithmic generators in `src/dsp/resonators/`, configured by the object's
+> curated character params. They feed a bank of second-order modes
+> (`y[n] = b0·x − a1·y1 − a2·y2`) in `src/dsp/resonators/core.rs`. Mode counts come
+> from the profile tables (`src/dsp/profiles/`), which are now **metadata only**
+> (`mode_count`/budget/tests) and no longer drive sound. Mode counts are fixed per
+> profile (~6–12 base modes) and are **not** scaled by quality mode.
 >
-> **Approved change (decided 2026-05, not yet implemented):** the algorithmic path
-> here becomes the **only** path, `complex_algo` is removed, and the profile tables
-> are demoted to `mode_count`/budget/test metadata. A **curated subset** of each
-> object's parameters below is exposed to the user (full list and IDs in
+> **Consolidation (implemented 2026-05-27):** the algorithmic path is the **only**
+> path, `complex_algo` was removed, and a **curated subset** of each object's
+> parameters below is exposed to the user (full list and IDs in
 > `docs/backlog.md` → "Algorithmic resonator engine"): Pipe `tube_diameter`; Plate
 > `aspect_ratio` + `metal_stiffness` (UI id `plate_stiffness`); Tank `tank_volume` +
 > `cavity_mix`; Chain `link_mass` + `instability`; IBeam `shear_density`; TautCable
 > `braid_stiffness` + `tension_drop`; CoilSpring `dispersion_chirp` + `spring_slosh`;
 > SheetMetal `metal_thinness`; IndustrialCog `tooth_dissonance`. Size/decay/
 > brightness-like fields stay covered by the global controls. As part of the same
-> change, **Chain and Tank's cavity will be made pitch-tracking** (they currently
-> ignore the MIDI note), and the **dynamic hooks** — TautCable's tension-drop
-> `update_dynamic_frequencies` and SheetMetal's `apply_warping` (both defined but
-> currently never called) — will be wired into the per-sample loop. See
-> `docs/ARCHITECTURE.md` §5.
+> change, **Chain and Tank's cavity are now pitch-tracking** (they previously
+> ignored the MIDI note), and the **dynamic hooks** — TautCable's tension-drop
+> `update_dynamic_frequencies` and SheetMetal's `apply_warping` — are wired into
+> the per-sample loop. See `docs/ARCHITECTURE.md` §5.
 
 # Resonator algorithms
 Same as the exciter algorithms but for resonators

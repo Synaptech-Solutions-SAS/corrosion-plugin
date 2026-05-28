@@ -21,6 +21,16 @@ impl IBeamResonator {
             rigidity_damping: 0.7,
         }
     }
+
+    /// Build from the exposed Shear Density control; mass and rigidity damping
+    /// stay covered by the global Size/Damping path.
+    pub fn with_character(shear_density: f32) -> Self {
+        Self {
+            beam_mass: 1.0,
+            shear_density,
+            rigidity_damping: 0.7,
+        }
+    }
 }
 
 impl Default for IBeamResonator {

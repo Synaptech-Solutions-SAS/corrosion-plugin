@@ -21,6 +21,16 @@ impl CoilSpringResonator {
             spring_slosh: 0.3,
         }
     }
+
+    /// Build from the exposed Dispersion Chirp / Spring Slosh controls; coil
+    /// length stays covered by the global Size/pitch path.
+    pub fn with_character(dispersion_chirp: f32, spring_slosh: f32) -> Self {
+        Self {
+            coil_length: 0.5,
+            dispersion_chirp,
+            spring_slosh,
+        }
+    }
 }
 
 impl Default for CoilSpringResonator {

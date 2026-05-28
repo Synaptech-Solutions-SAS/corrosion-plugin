@@ -96,10 +96,6 @@ pub struct CorrosionParams {
     #[id = "object"]
     pub object: IntParam,
 
-    /// Selects between the shared modal profile path and the per-object algorithmic path.
-    #[id = "complex_algo"]
-    pub complex_algo: IntParam,
-
     /// Quality mode (0=Eco, 1=Normal, 2=High, 3=Render)
     /// Controls CPU/quality tradeoff for post-processing and oversampling.
     #[id = "quality_mode"]
@@ -544,6 +540,68 @@ pub struct CorrosionParams {
     /// Viscous damping effect
     #[id = "sludge"]
     pub sludge: FloatParam,
+
+    // Per-object resonator "character" parameters.
+    //
+    // Each drives one algorithmic-resonator generator field for the matching
+    // object; the others are ignored. Size/decay/brightness-like behavior stays
+    // covered by the global Size/Damping/Brightness controls.
+    /// Pipe: stiffness/inharmonicity (wider = more bell-like).
+    #[id = "pipe_diameter"]
+    pub pipe_diameter: FloatParam,
+
+    /// Plate: aspect ratio Lx/Ly tuning the inharmonic cluster.
+    #[id = "plate_aspect"]
+    pub plate_aspect: FloatParam,
+
+    /// Plate: material stiffness spreading the modal cluster.
+    /// Ships under `plate_stiffness` since `metal_stiffness` is the Metal Pipe exciter id.
+    #[id = "plate_stiffness"]
+    pub plate_stiffness: FloatParam,
+
+    /// Tank: cavity volume setting the sub-bass boom depth.
+    #[id = "tank_volume"]
+    pub tank_volume: FloatParam,
+
+    /// Tank: balance between deep cavity mode and metallic shell modes.
+    #[id = "tank_cavity_mix"]
+    pub tank_cavity_mix: FloatParam,
+
+    /// Chain: base frequency range of the chaotic cluster (heavier = lower).
+    #[id = "chain_link_mass"]
+    pub chain_link_mass: FloatParam,
+
+    /// Chain: chaotic coupling coefficient destabilizing the pitch.
+    #[id = "chain_instability"]
+    pub chain_instability: FloatParam,
+
+    /// I-Beam: shear coefficient compressing the high-frequency modes.
+    #[id = "beam_shear"]
+    pub beam_shear: FloatParam,
+
+    /// Taut Cable: inharmonicity pushing upper partials sharp.
+    #[id = "cable_braid"]
+    pub cable_braid: FloatParam,
+
+    /// Taut Cable: how violently the pitch envelopes down after a hard strike.
+    #[id = "cable_tension_drop"]
+    pub cable_tension_drop: FloatParam,
+
+    /// Coil Spring: dispersion chirp severity (the laser-like "pew").
+    #[id = "spring_dispersion"]
+    pub spring_dispersion: FloatParam,
+
+    /// Coil Spring: detunes the modal array for chaotic, beating slosh.
+    #[id = "spring_slosh"]
+    pub spring_slosh: FloatParam,
+
+    /// Sheet Metal: buckling coefficient (higher = roars and wobbles when hit hard).
+    #[id = "sheet_thinness"]
+    pub sheet_thinness: FloatParam,
+
+    /// Industrial Cog: mode-splitting imperfection causing metallic beating.
+    #[id = "cog_dissonance"]
+    pub cog_dissonance: FloatParam,
 
     // Post-Processing Filter
     /// Filter cutoff frequency in Hz (20 to 20000, skewed)
@@ -1037,26 +1095,6 @@ pub fn object_param(default: i32) -> IntParam {
         }))
 }
 
-pub fn complex_algo_param(default: i32) -> IntParam {
-    IntParam::new(
-        "Complex Algo",
-        default.clamp(0, 1),
-        IntRange::Linear { min: 0, max: 1 },
-    )
-    .with_value_to_string(Arc::new(|value| match value {
-        0 => "Off".to_string(),
-        1 => "On".to_string(),
-        _ => "Off".to_string(),
-    }))
-    .with_string_to_value(Arc::new(|string| {
-        match string.trim().to_ascii_lowercase().as_str() {
-            "off" | "0" | "false" => Some(0),
-            "on" | "1" | "true" => Some(1),
-            _ => None,
-        }
-    }))
-}
-
 pub fn quality_mode_param(default: i32) -> IntParam {
     IntParam::new("Quality Mode", default, IntRange::Linear { min: 0, max: 3 })
         .with_value_to_string(Arc::new(|value| {
@@ -1101,7 +1139,6 @@ impl Default for CorrosionParams {
             // Sound generation defaults
             exciter: exciter_param(ExciterType::HandStrike.to_int()),
             object: object_param(0), // Pipe
-            complex_algo: complex_algo_param(0),
             quality_mode: quality_mode_param(QualityMode::Normal.to_int()),
 
             // Object transformation defaults
@@ -1394,6 +1431,81 @@ impl Default for CorrosionParams {
             thickness: FloatParam::new("Thickness", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
             heat: FloatParam::new("Heat", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
             sludge: FloatParam::new("Sludge", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 }),
+
+            // Per-object character defaults
+            pipe_diameter: FloatParam::new(
+                "Pipe Diameter",
+                0.5,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            plate_aspect: FloatParam::new(
+                "Plate Aspect",
+                1.0,
+                FloatRange::Linear { min: 0.1, max: 4.0 },
+            ),
+            plate_stiffness: FloatParam::new(
+                "Plate Stiffness",
+                1.0,
+                FloatRange::Linear {
+                    min: 0.25,
+                    max: 3.0,
+                },
+            ),
+            tank_volume: FloatParam::new(
+                "Tank Volume",
+                0.5,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            tank_cavity_mix: FloatParam::new(
+                "Cavity Mix",
+                0.6,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            chain_link_mass: FloatParam::new(
+                "Link Mass",
+                0.5,
+                FloatRange::Linear { min: 0.1, max: 1.0 },
+            ),
+            chain_instability: FloatParam::new(
+                "Instability",
+                0.3,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            beam_shear: FloatParam::new(
+                "Shear Density",
+                0.5,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            cable_braid: FloatParam::new(
+                "Braid Stiffness",
+                0.3,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            cable_tension_drop: FloatParam::new(
+                "Tension Drop",
+                0.4,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            spring_dispersion: FloatParam::new(
+                "Dispersion Chirp",
+                0.5,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            spring_slosh: FloatParam::new(
+                "Spring Slosh",
+                0.3,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            sheet_thinness: FloatParam::new(
+                "Metal Thinness",
+                0.4,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            cog_dissonance: FloatParam::new(
+                "Tooth Dissonance",
+                0.1,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
 
             // Post-processing filter defaults
             filter_cutoff: FloatParam::new(

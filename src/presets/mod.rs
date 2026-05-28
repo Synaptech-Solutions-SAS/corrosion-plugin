@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::params::{complex_algo_param, object_param, CorrosionParams, Object};
+use crate::params::{object_param, CorrosionParams, Object};
 use nih_plug::prelude::{util, FloatParam, FloatRange, IntParam, IntRange};
 
 pub const PRESET_VERSION: &str = "3";
@@ -105,6 +105,20 @@ pub struct PresetParameters {
     pub thickness: f32,
     pub heat: f32,
     pub sludge: f32,
+    pub pipe_diameter: f32,
+    pub plate_aspect: f32,
+    pub plate_stiffness: f32,
+    pub tank_volume: f32,
+    pub tank_cavity_mix: f32,
+    pub chain_link_mass: f32,
+    pub chain_instability: f32,
+    pub beam_shear: f32,
+    pub cable_braid: f32,
+    pub cable_tension_drop: f32,
+    pub spring_dispersion: f32,
+    pub spring_slosh: f32,
+    pub sheet_thinness: f32,
+    pub cog_dissonance: f32,
     pub filter_cutoff: f32,
     pub filter_resonance: f32,
     pub component_tolerance: f32,
@@ -232,6 +246,20 @@ impl PresetParameters {
             thickness: params.thickness.value(),
             heat: params.heat.value(),
             sludge: params.sludge.value(),
+            pipe_diameter: params.pipe_diameter.value(),
+            plate_aspect: params.plate_aspect.value(),
+            plate_stiffness: params.plate_stiffness.value(),
+            tank_volume: params.tank_volume.value(),
+            tank_cavity_mix: params.tank_cavity_mix.value(),
+            chain_link_mass: params.chain_link_mass.value(),
+            chain_instability: params.chain_instability.value(),
+            beam_shear: params.beam_shear.value(),
+            cable_braid: params.cable_braid.value(),
+            cable_tension_drop: params.cable_tension_drop.value(),
+            spring_dispersion: params.spring_dispersion.value(),
+            spring_slosh: params.spring_slosh.value(),
+            sheet_thinness: params.sheet_thinness.value(),
+            cog_dissonance: params.cog_dissonance.value(),
             filter_cutoff: params.filter_cutoff.value(),
             filter_resonance: params.filter_resonance.value(),
             component_tolerance: params.component_tolerance.value(),
@@ -377,6 +405,21 @@ impl PresetParameters {
         params.thickness = float_param("Thickness", self.thickness, 0.0, 1.0);
         params.heat = float_param("Heat", self.heat, 0.0, 1.0);
         params.sludge = float_param("Sludge", self.sludge, 0.0, 1.0);
+        params.pipe_diameter = float_param("Pipe Diameter", self.pipe_diameter, 0.0, 1.0);
+        params.plate_aspect = float_param("Plate Aspect", self.plate_aspect, 0.1, 4.0);
+        params.plate_stiffness = float_param("Plate Stiffness", self.plate_stiffness, 0.25, 3.0);
+        params.tank_volume = float_param("Tank Volume", self.tank_volume, 0.0, 1.0);
+        params.tank_cavity_mix = float_param("Cavity Mix", self.tank_cavity_mix, 0.0, 1.0);
+        params.chain_link_mass = float_param("Link Mass", self.chain_link_mass, 0.1, 1.0);
+        params.chain_instability = float_param("Instability", self.chain_instability, 0.0, 1.0);
+        params.beam_shear = float_param("Shear Density", self.beam_shear, 0.0, 1.0);
+        params.cable_braid = float_param("Braid Stiffness", self.cable_braid, 0.0, 1.0);
+        params.cable_tension_drop = float_param("Tension Drop", self.cable_tension_drop, 0.0, 1.0);
+        params.spring_dispersion =
+            float_param("Dispersion Chirp", self.spring_dispersion, 0.0, 1.0);
+        params.spring_slosh = float_param("Spring Slosh", self.spring_slosh, 0.0, 1.0);
+        params.sheet_thinness = float_param("Metal Thinness", self.sheet_thinness, 0.0, 1.0);
+        params.cog_dissonance = float_param("Tooth Dissonance", self.cog_dissonance, 0.0, 1.0);
         params.filter_cutoff =
             skewed_float_param("Filter Cutoff", self.filter_cutoff, 20.0, 20000.0, 0.5);
         params.filter_resonance = float_param("Filter Resonance", self.filter_resonance, 0.0, 1.0);
@@ -453,8 +496,6 @@ pub struct Preset {
     #[serde(default = "default_quality_mode")]
     pub quality_mode: i32,
     #[serde(default)]
-    pub complex_algo: i32,
-    #[serde(default)]
     pub extra: PresetParameters,
 }
 
@@ -477,7 +518,6 @@ impl Preset {
             width: params.width.value(),
             body: params.body.value(),
             quality_mode: params.quality_mode.value(),
-            complex_algo: params.complex_algo.value(),
             extra: PresetParameters::from_params(params),
         }
     }
@@ -494,7 +534,6 @@ impl Preset {
         params.width = float_param("Width", self.width, -2.0, 3.0);
         params.body = float_param("Body", self.body, 0.0, 5.0);
         params.quality_mode = crate::params::quality_mode_param(self.quality_mode);
-        params.complex_algo = complex_algo_param(self.complex_algo);
         self.extra.apply_to(&mut params);
         params
     }
@@ -519,7 +558,6 @@ impl Preset {
         sanitized.version = self.version;
         sanitized.object = self.object;
         sanitized.exciter = params.exciter.value();
-        sanitized.complex_algo = params.complex_algo.value();
         sanitized
     }
 }

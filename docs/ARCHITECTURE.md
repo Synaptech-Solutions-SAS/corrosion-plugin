@@ -89,7 +89,7 @@ src/
   lib.rs              Plugin trait impls, MIDI routing, apply_drive, output limiter,
                       per-sample post-chain parameter updates
   params.rs           127 host parameters; ExciterType (16), Object (9),
-                      QualityMode (Eco/Normal/High/Render), complex_algo toggle
+                      QualityMode (Eco/Normal/High/Render), 14 per-object character params
   voice/
     mod.rs            Voice: 16 exciter slots + ModalResonator + 3 envelope models,
                       VoiceControls snapshot, midi_to_hz, tail/rendering lifecycle
@@ -105,8 +105,8 @@ src/
     profiles/         Per-object modal mode tables (pipe, plate, tank, chain, ibeam,
                       taut_cable, coil_spring, sheet_metal, industrial_cog)
     resonators/       core.rs (ModalResonator, SecondOrderMode, ResonatorCore trait,
-                      ResonatorCoefficients) + algorithmic resonators and the
-                      ResonatorAlgorithm path (complex_algo = 1)
+                      ResonatorCoefficients, CharacterParams) + per-object
+                      ResonatorAlgorithm generators (sole resonator path)
     envelopes/        mod.rs: 6-stage MSEG, Stage, LoopMode
     exciters/         16 exciters (bow, hand_strike, felt_mallet, hard_mallet,
                       drumstick, wire_brush, metal_pipe, metal_chain, stiff_point,
@@ -165,10 +165,9 @@ Idle ──note_on──▶ Active(rendering) ──note_off──▶ Tail(rende
 ```
 
 - **note_on**: snapshot parameters into `VoiceControls`, rebuild the resonator
-  (profile-table path, or the algorithmic path if `complex_algo = 1`; see the
-  approved change in §5 — slated to become algorithmic-only), configure
-  interaction params, trigger the selected exciter, init the envelope. Sets both
-  `active` and `rendering` true.
+  via the algorithmic generator configured by the object's character params
+  (see §5), configure interaction params, trigger the selected exciter, init the
+  envelope. Sets both `active` and `rendering` true.
 - **note_off**: clears `active`, releases the exciter and force envelope; the
   resonator tail keeps `rendering` true until it decays.
 - **Tail deactivation**: when `!active` and `peak_hold < TAIL_ENERGY_THRESHOLD`
@@ -191,31 +190,32 @@ r = exp(−1 / (decay_seconds · sample_rate))
 a1 = −2r·cos(ω),  a2 = r²,  b0 = gain
 ```
 
-Two construction paths exist:
+The resonator is built by a single path (algorithmic), then transformed:
 
-- **Profile table** (`complex_algo = 0`, default): start from a curated
-  `ModalModeSpec` table per object, then apply transforms in order
-  (size → rust → thickness → heat → sludge → damage), retune to the MIDI pitch,
-  and apply `res_damping`/`res_brightness`.
-- **Algorithmic** (`complex_algo = 1`): generate modes from a per-object
-  `ResonatorAlgorithm` (`PipeResonator`, `PlateResonator`, … `IndustrialCogResonator`)
-  and then apply the same transform chain.
+- **Algorithmic generator**: each object's `ResonatorAlgorithm`
+  (`PipeResonator`, `PlateResonator`, … `IndustrialCogResonator`), configured by
+  that object's curated **character** params, generates the modal bank for the
+  MIDI pitch.
+- **Transform chain**: the generated modes then run the same transforms in order
+  (rust → thickness → heat → sludge → damage) plus `res_damping`/`res_brightness`.
 
 Coefficients are cached and rebuilt on sample-rate change. Transformation macros
-are applied at note-on and stay fixed for the duration of the note.
+and character params are applied at note-on and stay fixed for the duration of the
+note; the Cable/Sheet **dynamic hooks** are the exception (see below).
 
-> **Approved change (decided 2026-05, pending implementation).** The dual-path
-> design above is being consolidated: the **algorithmic path becomes the only
-> path**, `complex_algo` is removed, and a **curated set of 14 per-object
-> "character" parameters** is exposed (Pipe Diameter, Plate Aspect/Stiffness, Tank
+> **Approved change (decided 2026-05, implemented 2026-05-27).** The former dual
+> path was consolidated: the **algorithmic path is now the only path**,
+> `complex_algo` was removed, and a **curated set of 14 per-object "character"
+> parameters** is exposed (Pipe Diameter, Plate Aspect/Stiffness, Tank
 > Volume/Cavity Mix, Chain Link Mass/Instability, IBeam Shear, Cable Braid/Tension
 > Drop, Spring Dispersion/Slosh, Sheet Thinness, Cog Dissonance). Profile tables
-> are kept as `mode_count`/budget/test metadata only and stop driving sound. Two
-> generator pitch gaps (Chain ignores the note; Tank's cavity is a fixed Hz) are
-> fixed, and the per-sample dynamic hooks (`TautCable` amplitude→pitch,
-> `SheetMetal` warp) are wired into the resonator loop. The default object timbres
-> will change as a result. See `docs/backlog.md` → "Algorithmic resonator engine"
-> for the task breakdown and the full parameter table.
+> are kept as `mode_count`/budget/test metadata only and no longer drive sound.
+> The two generator pitch gaps (Chain ignored the note; Tank's cavity was a fixed
+> Hz) are fixed, and the per-sample dynamic hooks (`TautCable` amplitude→pitch,
+> `SheetMetal` warp) run in `ModalResonator::process_sample[_stereo]`, scaling each
+> mode from its immutable base frequency (allocation-free). The default object
+> timbres changed as a result. See `docs/backlog.md` → "Algorithmic resonator
+> engine".
 
 Nine object profiles ship: **Pipe, Plate, Tank, Chain, IBeam, TautCable,
 CoilSpring, SheetMetal, IndustrialCog**.
@@ -363,8 +363,8 @@ bundle/validator flow uses `x86_64-unknown-linux-gnu`.
 - **Oversampled clipper is effectively a soft clipper.** Until the no-op is fixed,
   nonlinear-stage aliasing is unmitigated (and is exactly what the aliasing
   harness measures).
-- **Dual resonator path is being retired.** A signed-off change (see §5 and
-  `docs/backlog.md`) removes `complex_algo`, makes the algorithmic generators the
-  sole engine, exposes per-object character params, and demotes the profile tables
-  to metadata. Until implemented, the default sound still comes from the profile
-  tables.
+- **Single algorithmic resonator path.** The former dual path was retired
+  (implemented 2026-05-27, see §5 and `docs/backlog.md`): `complex_algo` is gone,
+  the per-object algorithmic generators are the sole engine, 14 per-object
+  character params are exposed, and the profile tables are demoted to
+  `mode_count`/budget/test metadata.

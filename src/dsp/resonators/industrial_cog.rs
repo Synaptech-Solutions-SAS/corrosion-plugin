@@ -23,6 +23,16 @@ impl IndustrialCogResonator {
             blade_thickness: 0.5,
         }
     }
+
+    /// Build from the exposed Tooth Dissonance control; radius and thickness
+    /// stay covered by the global Size/Damping path.
+    pub fn with_character(tooth_dissonance: f32) -> Self {
+        Self {
+            blade_radius: 0.5,
+            tooth_dissonance,
+            blade_thickness: 0.5,
+        }
+    }
 }
 
 impl Default for IndustrialCogResonator {

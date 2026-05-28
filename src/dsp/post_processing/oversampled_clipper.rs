@@ -90,7 +90,10 @@ impl OversampledClipper {
 
     /// Processes a stereo frame by clipping each channel independently.
     pub fn process_stereo(&mut self, left: f32, right: f32) -> (f32, f32) {
-        (self.process_channel(left, 0), self.process_channel(right, 1))
+        (
+            self.process_channel(left, 0),
+            self.process_channel(right, 1),
+        )
     }
 
     /// Clears oversampling state buffers.
@@ -178,7 +181,10 @@ mod tests {
         assert!(l1.is_finite() && r1.is_finite());
         // Left rising from 0, right falling from 0 — opposite-signed inputs
         // should yield opposite-signed clipped outputs.
-        assert!(l1 > 0.0 && r1 < 0.0, "channels must track their own input sign");
+        assert!(
+            l1 > 0.0 && r1 < 0.0,
+            "channels must track their own input sign"
+        );
     }
 
     #[test]

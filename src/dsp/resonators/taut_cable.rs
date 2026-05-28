@@ -21,6 +21,23 @@ impl TautCableResonator {
             tension_drop: 0.4,
         }
     }
+
+    /// Build a cable from the exposed character controls, leaving base tuning
+    /// to the global Size/pitch path.
+    pub fn with_character(braid_stiffness: f32, tension_drop: f32) -> Self {
+        Self {
+            cable_tension: 0.5,
+            braid_stiffness,
+            tension_drop,
+        }
+    }
+
+    /// Per-sample pitch multiplier driven by the cable's running amplitude
+    /// (the "boing": a hard strike stretches the wire, raising the pitch, which
+    /// falls back as the strike decays). Bounded so feedback cannot run away.
+    pub fn dynamic_pitch_factor(&self, total_amplitude: f32) -> f32 {
+        (1.0 + self.tension_drop * total_amplitude * 0.1).clamp(0.25, 4.0)
+    }
 }
 
 impl Default for TautCableResonator {
@@ -53,7 +70,7 @@ impl ResonatorAlgorithm for TautCableResonator {
     }
 
     fn update_dynamic_frequencies(&mut self, modes: &mut [ModalModeSpec], total_amplitude: f32) {
-        let pitch_shift = 1.0 + self.tension_drop * total_amplitude * 0.1;
+        let pitch_shift = self.dynamic_pitch_factor(total_amplitude);
         for mode in modes.iter_mut() {
             mode.frequency_hz *= pitch_shift;
         }

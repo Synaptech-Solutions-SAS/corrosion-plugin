@@ -229,7 +229,6 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
             // This bundles parameters that need to be passed to the voice
             let controls = VoiceControls {
                 env_attack: plugin.params.env_attack.value(),
-                complex_algo: plugin.params.complex_algo.value(),
                 env_decay: plugin.params.env_decay.value(),
                 env_sustain: plugin.params.env_sustain.value(),
                 env_release: plugin.params.env_release.value(),
@@ -320,6 +319,22 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
                 thickness: plugin.params.thickness.value(),
                 heat: plugin.params.heat.value(),
                 sludge: plugin.params.sludge.value(),
+                character: dsp::CharacterParams {
+                    pipe_diameter: plugin.params.pipe_diameter.value(),
+                    plate_aspect: plugin.params.plate_aspect.value(),
+                    plate_stiffness: plugin.params.plate_stiffness.value(),
+                    tank_volume: plugin.params.tank_volume.value(),
+                    tank_cavity_mix: plugin.params.tank_cavity_mix.value(),
+                    chain_link_mass: plugin.params.chain_link_mass.value(),
+                    chain_instability: plugin.params.chain_instability.value(),
+                    beam_shear: plugin.params.beam_shear.value(),
+                    cable_braid: plugin.params.cable_braid.value(),
+                    cable_tension_drop: plugin.params.cable_tension_drop.value(),
+                    spring_dispersion: plugin.params.spring_dispersion.value(),
+                    spring_slosh: plugin.params.spring_slosh.value(),
+                    sheet_thinness: plugin.params.sheet_thinness.value(),
+                    cog_dissonance: plugin.params.cog_dissonance.value(),
+                },
             };
 
             // Get the selected exciter type (0-16 for different exciters)

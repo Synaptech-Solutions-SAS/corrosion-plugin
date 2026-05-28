@@ -8,7 +8,9 @@ pub mod taut_cable;
 
 pub use basic::{ChainResonator, PipeResonator, PlateResonator, ResonatorAlgorithm, TankResonator};
 pub use coil_spring::CoilSpringResonator;
-pub use core::{ModalResonator, ResonatorCoefficients, ResonatorCore, SecondOrderMode};
+pub use core::{
+    CharacterParams, ModalResonator, ResonatorCoefficients, ResonatorCore, SecondOrderMode,
+};
 pub use ibeam::IBeamResonator;
 pub use industrial_cog::IndustrialCogResonator;
 pub use sheet_metal::SheetMetalResonator;

@@ -11,6 +11,62 @@ use crate::dsp::resonators::{
     PlateResonator, ResonatorAlgorithm, SheetMetalResonator, TankResonator, TautCableResonator,
 };
 
+/// Curated per-object "character" controls exposed to the user.
+///
+/// Each field maps to one algorithmic-resonator generator parameter (see
+/// `docs/backlog.md` → "Algorithmic resonator engine"). Only the field that
+/// matches the active object is consulted at note-on; the rest are ignored.
+/// Size/decay/brightness-like behavior stays covered by the global controls.
+#[derive(Clone, Copy, Debug)]
+pub struct CharacterParams {
+    pub pipe_diameter: f32,
+    pub plate_aspect: f32,
+    pub plate_stiffness: f32,
+    pub tank_volume: f32,
+    pub tank_cavity_mix: f32,
+    pub chain_link_mass: f32,
+    pub chain_instability: f32,
+    pub beam_shear: f32,
+    pub cable_braid: f32,
+    pub cable_tension_drop: f32,
+    pub spring_dispersion: f32,
+    pub spring_slosh: f32,
+    pub sheet_thinness: f32,
+    pub cog_dissonance: f32,
+}
+
+impl Default for CharacterParams {
+    fn default() -> Self {
+        Self {
+            pipe_diameter: 0.5,
+            plate_aspect: 1.0,
+            plate_stiffness: 1.0,
+            tank_volume: 0.5,
+            tank_cavity_mix: 0.6,
+            chain_link_mass: 0.5,
+            chain_instability: 0.3,
+            beam_shear: 0.5,
+            cable_braid: 0.3,
+            cable_tension_drop: 0.4,
+            spring_dispersion: 0.5,
+            spring_slosh: 0.3,
+            sheet_thinness: 0.4,
+            cog_dissonance: 0.1,
+        }
+    }
+}
+
+/// Per-sample dynamic behavior retained from the object's algorithm so the
+/// resonator can modulate mode frequencies while it rings.
+#[derive(Clone, Debug)]
+enum Dynamics {
+    None,
+    /// Cable tension drop: amplitude raises pitch, which falls back as it decays.
+    TautCable(TautCableResonator),
+    /// Sheet-metal buckling: low-frequency displacement warps every mode.
+    SheetMetal(SheetMetalResonator),
+}
+
 #[derive(Clone, Copy)]
 struct AlgorithmTransformControls {
     rust_amount: crate::dsp::RustAmount,
@@ -53,6 +109,10 @@ impl ResonatorCoefficients {
 /// Cached second-order state for one modal peak.
 pub struct SecondOrderMode {
     pub(crate) spec: crate::dsp::ModalModeSpec,
+    /// Note-on frequency, kept immutable so per-sample dynamic pitch effects
+    /// (cable tension drop, sheet-metal warp) scale from a fixed base instead
+    /// of compounding their own prior output.
+    base_frequency_hz: f32,
     coefficients: ResonatorCoefficients,
     cached_sample_rate: Option<u32>,
     y1: f32,
@@ -64,11 +124,21 @@ impl SecondOrderMode {
     pub fn new(spec: crate::dsp::ModalModeSpec) -> Self {
         Self {
             spec,
+            base_frequency_hz: spec.frequency_hz,
             coefficients: ResonatorCoefficients::for_mode(spec, 48_000),
             cached_sample_rate: None,
             y1: 0.0,
             y2: 0.0,
         }
+    }
+
+    /// Override the mode frequency and rebuild coefficients in place.
+    ///
+    /// Used by the per-sample dynamic hooks. Allocation-free.
+    pub fn set_frequency(&mut self, frequency_hz: f32, sample_rate: u32) {
+        self.spec.frequency_hz = frequency_hz;
+        self.coefficients = ResonatorCoefficients::for_mode(self.spec, sample_rate);
+        self.cached_sample_rate = Some(sample_rate);
     }
 
     /// Process one excitation sample through the resonator.
@@ -108,6 +178,12 @@ pub struct ModalResonator {
     interaction_bus: crate::dsp::BidirectionalInteractionBus,
     last_output: f32,
     current_output: f32,
+    /// Per-sample dynamic behavior (cable/sheet); `None` for static objects.
+    dynamics: Dynamics,
+    /// Smoothed running amplitude estimate driving the cable tension drop.
+    dyn_amplitude: f32,
+    /// Smoothed low-frequency displacement driving the sheet-metal warp.
+    dyn_lf_displacement: f32,
 }
 
 impl ModalResonator {
@@ -116,6 +192,7 @@ impl ModalResonator {
     fn from_mode_specs(
         profile_id: crate::dsp::ModalProfileId,
         modes: Vec<crate::dsp::ModalModeSpec>,
+        dynamics: Dynamics,
     ) -> Self {
         let modes = modes
             .into_iter()
@@ -136,6 +213,9 @@ impl ModalResonator {
             interaction_bus,
             last_output: 0.0,
             current_output: 0.0,
+            dynamics,
+            dyn_amplitude: 0.0,
+            dyn_lf_displacement: 0.0,
         }
     }
 
@@ -166,48 +246,89 @@ impl ModalResonator {
         transformed
     }
 
+    /// Generate the algorithmic modal bank for an object, configured by the
+    /// curated character controls. The profile tables now contribute only
+    /// `mode_count` (budget/test metadata); they no longer drive the sound.
+    ///
+    /// Returns the raw modes plus any per-sample dynamic behavior the object
+    /// retains (cable tension drop, sheet-metal warp).
     fn generate_algorithm_modes(
         profile_id: crate::dsp::ModalProfileId,
         size_scale: crate::dsp::SizeScale,
         target_frequency_hz: f32,
-    ) -> Vec<crate::dsp::ModalModeSpec> {
+        character: CharacterParams,
+    ) -> (Vec<crate::dsp::ModalModeSpec>, Dynamics) {
         let mode_count = crate::dsp::ModalProfile::from_id(profile_id)
             .mode_count()
             .max(1);
 
         match profile_id {
             crate::dsp::ModalProfileId::Pipe => {
-                PipeResonator::default().generate_modes(target_frequency_hz, mode_count, size_scale)
+                let resonator = PipeResonator {
+                    tube_diameter: character.pipe_diameter,
+                    sustain_time: 1.0,
+                };
+                let modes = resonator.generate_modes(target_frequency_hz, mode_count, size_scale);
+                (modes, Dynamics::None)
             }
-            crate::dsp::ModalProfileId::Plate => PlateResonator::default().generate_modes(
-                target_frequency_hz,
-                mode_count,
-                size_scale,
-            ),
+            crate::dsp::ModalProfileId::Plate => {
+                let resonator = PlateResonator {
+                    aspect_ratio: character.plate_aspect,
+                    metal_stiffness: character.plate_stiffness,
+                };
+                let modes = resonator.generate_modes(target_frequency_hz, mode_count, size_scale);
+                (modes, Dynamics::None)
+            }
             crate::dsp::ModalProfileId::Tank => {
-                TankResonator::default().generate_modes(target_frequency_hz, mode_count, size_scale)
+                let resonator = TankResonator {
+                    tank_volume: character.tank_volume,
+                    wall_thickness: 0.5,
+                    cavity_mix: character.tank_cavity_mix,
+                };
+                let modes = resonator.generate_modes(target_frequency_hz, mode_count, size_scale);
+                (modes, Dynamics::None)
             }
-            crate::dsp::ModalProfileId::Chain => ChainResonator::default().generate_modes(
-                target_frequency_hz,
-                mode_count,
-                size_scale,
-            ),
-            crate::dsp::ModalProfileId::IBeam => IBeamResonator::default().generate_modes(
-                target_frequency_hz,
-                mode_count,
-                size_scale,
-            ),
-            crate::dsp::ModalProfileId::TautCable => TautCableResonator::default().generate_modes(
-                target_frequency_hz,
-                mode_count,
-                size_scale,
-            ),
-            crate::dsp::ModalProfileId::CoilSpring => CoilSpringResonator::default()
-                .generate_modes(target_frequency_hz, mode_count, size_scale),
-            crate::dsp::ModalProfileId::SheetMetal => SheetMetalResonator::default()
-                .generate_modes(target_frequency_hz, mode_count, size_scale),
-            crate::dsp::ModalProfileId::IndustrialCog => IndustrialCogResonator::default()
-                .generate_modes(target_frequency_hz, mode_count, size_scale),
+            crate::dsp::ModalProfileId::Chain => {
+                let resonator = ChainResonator {
+                    link_mass: character.chain_link_mass,
+                    chain_length: mode_count,
+                    instability: character.chain_instability,
+                    friction_decay: 2.0,
+                };
+                let modes = resonator.generate_modes(target_frequency_hz, mode_count, size_scale);
+                (modes, Dynamics::None)
+            }
+            crate::dsp::ModalProfileId::IBeam => {
+                let resonator = IBeamResonator::with_character(character.beam_shear);
+                let modes = resonator.generate_modes(target_frequency_hz, mode_count, size_scale);
+                (modes, Dynamics::None)
+            }
+            crate::dsp::ModalProfileId::TautCable => {
+                let resonator = TautCableResonator::with_character(
+                    character.cable_braid,
+                    character.cable_tension_drop,
+                );
+                let modes = resonator.generate_modes(target_frequency_hz, mode_count, size_scale);
+                (modes, Dynamics::TautCable(resonator))
+            }
+            crate::dsp::ModalProfileId::CoilSpring => {
+                let resonator = CoilSpringResonator::with_character(
+                    character.spring_dispersion,
+                    character.spring_slosh,
+                );
+                let modes = resonator.generate_modes(target_frequency_hz, mode_count, size_scale);
+                (modes, Dynamics::None)
+            }
+            crate::dsp::ModalProfileId::SheetMetal => {
+                let resonator = SheetMetalResonator::with_character(character.sheet_thinness);
+                let modes = resonator.generate_modes(target_frequency_hz, mode_count, size_scale);
+                (modes, Dynamics::SheetMetal(resonator))
+            }
+            crate::dsp::ModalProfileId::IndustrialCog => {
+                let resonator = IndustrialCogResonator::with_character(character.cog_dissonance);
+                let modes = resonator.generate_modes(target_frequency_hz, mode_count, size_scale);
+                (modes, Dynamics::None)
+            }
         }
     }
 
@@ -270,6 +391,9 @@ impl ModalResonator {
             interaction_bus,
             last_output: 0.0,
             current_output: 0.0,
+            dynamics: Dynamics::None,
+            dyn_amplitude: 0.0,
+            dyn_lf_displacement: 0.0,
         }
     }
 
@@ -390,8 +514,10 @@ impl ModalResonator {
         target_frequency_hz: f32,
         damping: f32,
         brightness: f32,
+        character: CharacterParams,
     ) -> Self {
-        let raw_modes = Self::generate_algorithm_modes(profile_id, size_scale, target_frequency_hz);
+        let (raw_modes, dynamics) =
+            Self::generate_algorithm_modes(profile_id, size_scale, target_frequency_hz, character);
         let transformed = Self::transform_algorithm_modes(
             raw_modes,
             AlgorithmTransformControls {
@@ -404,7 +530,7 @@ impl ModalResonator {
                 brightness,
             },
         );
-        Self::from_mode_specs(profile_id, transformed)
+        Self::from_mode_specs(profile_id, transformed, dynamics)
     }
 }
 
@@ -465,6 +591,37 @@ impl ModalResonator {
         self.interaction_bus.update();
     }
 
+    /// Apply the object's per-sample dynamic pitch behavior, recomputing the
+    /// affected mode coefficients from their immutable base frequency. No-op
+    /// for static objects. Allocation-free.
+    fn apply_dynamics(&mut self, sample_rate: u32) {
+        let factor = match &self.dynamics {
+            Dynamics::None => return,
+            Dynamics::TautCable(inst) => inst.dynamic_pitch_factor(self.dyn_amplitude),
+            Dynamics::SheetMetal(inst) => inst.warp_factor(self.dyn_lf_displacement),
+        };
+        if !factor.is_finite() {
+            return;
+        }
+        for mode in &mut self.modes {
+            let base = mode.base_frequency_hz;
+            mode.set_frequency(base * factor, sample_rate);
+        }
+    }
+
+    #[inline]
+    fn has_dynamics(&self) -> bool {
+        !matches!(self.dynamics, Dynamics::None)
+    }
+
+    /// Update the smoothed amplitude / low-frequency estimates that drive the
+    /// dynamic hooks. `lf_sum` is the summed displacement of the lowest modes.
+    #[inline]
+    fn track_dynamic_state(&mut self, amp_sum: f32, lf_sum: f32) {
+        self.dyn_amplitude = self.dyn_amplitude * 0.99 + amp_sum * 0.01;
+        self.dyn_lf_displacement = self.dyn_lf_displacement * 0.95 + lf_sum * 0.05;
+    }
+
     /// Return the current summed displacement.
     pub fn get_displacement(&self) -> f32 {
         self.interaction_bus.state.resonator_displacement
@@ -488,8 +645,15 @@ impl ResonatorCore for ModalResonator {
             .clamp(0.0, 1.0);
         self.interaction_bus.state.set_exciter_force(excitation);
 
+        let dynamic = self.has_dynamics();
+        if dynamic {
+            self.apply_dynamics(sample_rate);
+        }
+
         let mut mode_sum = 0.0f32;
         let mut interaction_displacement = 0.0f32;
+        let mut amp_sum = 0.0f32;
+        let mut lf_sum = 0.0f32;
 
         for (index, mode) in self.modes.iter_mut().enumerate() {
             let coeff = self
@@ -503,6 +667,16 @@ impl ResonatorCore for ModalResonator {
             let mode_output = mode.process(blended_force, sample_rate);
             mode_sum += mode_output;
             interaction_displacement += mode_output * coeff;
+            if dynamic {
+                amp_sum += mode_output.abs();
+                if index < 3 {
+                    lf_sum += mode_output;
+                }
+            }
+        }
+
+        if dynamic {
+            self.track_dynamic_state(amp_sum, lf_sum);
         }
 
         self.current_output = mode_sum;
@@ -543,9 +717,16 @@ impl ResonatorCore for ModalResonator {
             .clamp(0.0, 1.0);
         self.interaction_bus.state.set_exciter_force(excitation);
 
+        let dynamic = self.has_dynamics();
+        if dynamic {
+            self.apply_dynamics(sample_rate);
+        }
+
         let mut left_sum = 0.0f32;
         let mut right_sum = 0.0f32;
         let mut interaction_displacement = 0.0f32;
+        let mut amp_sum = 0.0f32;
+        let mut lf_sum = 0.0f32;
 
         for (index, mode) in self.modes.iter_mut().enumerate() {
             let coeff = self
@@ -567,6 +748,16 @@ impl ResonatorCore for ModalResonator {
             left_sum += sample * left_gain;
             right_sum += sample * right_gain;
             interaction_displacement += sample * coeff;
+            if dynamic {
+                amp_sum += sample.abs();
+                if index < 3 {
+                    lf_sum += sample;
+                }
+            }
+        }
+
+        if dynamic {
+            self.track_dynamic_state(amp_sum, lf_sum);
         }
 
         self.current_output = (left_sum + right_sum) * 0.5;

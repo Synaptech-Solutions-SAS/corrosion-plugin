@@ -194,11 +194,11 @@ impl ResonatorAlgorithm for TankResonator {
         let f_base = fundamental_hz / size_scale.factor();
         let mut modes = Vec::with_capacity(mode_count);
 
-        // Helmholtz cavity resonance (low frequency boom)
-        // f_air = v_sound / (2π) * sqrt(A_opening / (V_tank * L_neck))
-        // Simplified: lower frequency for larger volume
-        let v_sound = 343.0; // m/s
-        let cavity_freq = v_sound / (2.0 * std::f32::consts::PI * (1.0 + self.tank_volume));
+        // Helmholtz cavity resonance (low frequency boom). The cavity follows
+        // the played note (a deep sub-octave) rather than sitting at a fixed Hz,
+        // so the tank stays in tune across the keyboard. Larger volumes push the
+        // boom further below the fundamental.
+        let cavity_freq = (f_base * 0.5 / (1.0 + self.tank_volume)).max(f32::EPSILON);
         let cavity_gain = 0.05 * self.cavity_mix;
         let cavity_decay = 2.5 * (1.0 + self.tank_volume); // Long sustain for boom
 
@@ -245,12 +245,15 @@ impl ChainResonator {
         }
     }
 
-    /// Generate GOE-distributed frequencies (chaotic, repelling)
-    fn goe_frequency(&self, index: usize, _total: usize) -> f32 {
+    /// Generate GOE-distributed frequencies (chaotic, repelling).
+    ///
+    /// The cluster is anchored to the played note so the chain tracks pitch;
+    /// heavier links shift the whole cluster lower.
+    fn goe_frequency(&self, index: usize, fundamental_hz: f32) -> f32 {
         let n = index as f32;
         // Chaotic distribution using random-like but deterministic sequence
         let chaos = (n * 1.618_034).fract(); // Golden ratio conjugate
-        let base = 100.0 / self.link_mass;
+        let base = fundamental_hz / (0.5 + self.link_mass);
         base * (1.0 + n * 0.15 + chaos * self.instability)
     }
 }
@@ -264,7 +267,7 @@ impl Default for ChainResonator {
 impl ResonatorAlgorithm for ChainResonator {
     fn generate_modes(
         &self,
-        _fundamental_hz: f32,
+        fundamental_hz: f32,
         mode_count: usize,
         size_scale: crate::dsp::SizeScale,
     ) -> Vec<ModalModeSpec> {
@@ -272,8 +275,8 @@ impl ResonatorAlgorithm for ChainResonator {
 
         (0..count)
             .map(|i| {
-                // GOE chaotic frequencies
-                let freq = self.goe_frequency(i, count) / size_scale.factor();
+                // GOE chaotic frequencies, anchored to the played note
+                let freq = self.goe_frequency(i, fundamental_hz) / size_scale.factor();
                 // High damping for individual modes
                 let decay = 0.4 / self.friction_decay;
                 // Dense cluster

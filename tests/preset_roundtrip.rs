@@ -26,7 +26,6 @@ fn preset_roundtrip_save_and_load() {
         width: 0.5,
         body: 0.2,
         quality_mode: 1,
-        complex_algo: 0,
         extra: PresetParameters::default(),
     };
 
@@ -75,7 +74,6 @@ fn expanded_parameters_roundtrip() {
         width: 2.0,
         body: 4.0,
         quality_mode: 3,
-        complex_algo: 1,
         extra: PresetParameters::default(),
     };
     preset.extra.drive_amount = 3.2;
@@ -87,6 +85,8 @@ fn expanded_parameters_roundtrip() {
     preset.extra.pipe_ring_decay = 0.991;
     preset.extra.ridge_spacing = 0.08;
     preset.extra.flow_rate = 2.2;
+    preset.extra.plate_aspect = 2.5;
+    preset.extra.cog_dissonance = 0.7;
 
     let path = unique_temp_path("expanded_roundtrip");
     preset.save(&path).unwrap();
@@ -100,11 +100,12 @@ fn expanded_parameters_roundtrip() {
     assert_eq!(params.space_amount.value(), 0.8);
     assert_eq!(params.analog_ceiling.value(), 0.7);
     assert_eq!(params.diode_softness.value(), 0.9);
-    assert_eq!(params.complex_algo.value(), 1);
     assert_eq!(params.hand_mass.value(), 2.4);
     assert_eq!(params.pipe_ring_decay.value(), 0.991);
     assert_eq!(params.ridge_spacing.value(), 0.08);
     assert_eq!(params.flow_rate.value(), 2.2);
+    assert_eq!(params.plate_aspect.value(), 2.5);
+    assert_eq!(params.cog_dissonance.value(), 0.7);
     let _ = fs::remove_file(path);
 }
 
@@ -177,7 +178,6 @@ fn quality_mode_preset_roundtrip() {
         width: 0.0,
         body: 0.0,
         quality_mode: 0,
-        complex_algo: 1,
         extra: PresetParameters::default(),
     };
 
@@ -185,10 +185,40 @@ fn quality_mode_preset_roundtrip() {
     preset.save(&path).unwrap();
     let loaded = Preset::load(&path).unwrap();
     assert_eq!(preset.quality_mode, loaded.quality_mode);
-    assert_eq!(preset.complex_algo, loaded.complex_algo);
 
     let params = loaded.into_params();
     assert_eq!(params.quality_mode.value(), 0);
-    assert_eq!(params.complex_algo.value(), 1);
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn legacy_complex_algo_field_is_ignored_on_load() {
+    // The retired `complex_algo` field must load silently from old presets,
+    // and the new per-object character fields default when absent.
+    let json = r#"
+    {
+        "name": "Legacy",
+        "version": "3",
+        "object": "Plate",
+        "exciter": 2,
+        "size": 1.0,
+        "rust": 0.0,
+        "damage": 0.0,
+        "drive": 0.0,
+        "output": 1.0,
+        "width": 0.5,
+        "body": 0.0,
+        "quality_mode": 1,
+        "complex_algo": 1
+    }
+    "#;
+
+    let path = unique_temp_path("legacy_complex_algo");
+    fs::write(&path, json).unwrap();
+    let loaded = Preset::load(&path).unwrap();
+    let params = loaded.into_params();
+    // New character params fall back to their defaults.
+    assert_eq!(params.plate_aspect.value(), 1.0);
+    assert_eq!(params.pipe_diameter.value(), 0.5);
     let _ = fs::remove_file(path);
 }

@@ -11,8 +11,8 @@
 //! path allocation-free and deterministic.
 
 use crate::dsp::{
-    BowExciter, CorrugatedDrag, DamageAmount, Drumstick, ElectromagneticHum, FeltMallet,
-    HandStrike, HardMallet, HeatAmount, HeavyGrinding, LoopMode, MetalChain, MetalPipe,
+    BowExciter, CharacterParams, CorrugatedDrag, DamageAmount, Drumstick, ElectromagneticHum,
+    FeltMallet, HandStrike, HardMallet, HeatAmount, HeavyGrinding, LoopMode, MetalChain, MetalPipe,
     ModalProfileId, ModalResonator, ParticleRain, PneumaticJet, ResonatorCore, RustAmount,
     SizeScale, SludgeAmount, StiffPointScrape, TensionRise, TensionSnap, ThicknessAmount,
     WireBrush, MSEG,
@@ -48,8 +48,6 @@ pub fn midi_to_hz(note: u8) -> f32 {
 /// These values are copied into the voice so the audio thread can
 /// trigger and render without touching shared state.
 pub struct VoiceControls {
-    /// Selects the algorithmic resonator constructor instead of the modal profile table.
-    pub complex_algo: i32,
     /// Attack time for hit and specialty envelopes, in seconds.
     pub env_attack: f32,
     /// Decay time for the specialty ADSR, in seconds.
@@ -232,12 +230,13 @@ pub struct VoiceControls {
     pub heat: f32,
     /// Viscous/material damping control passed into the resonator model.
     pub sludge: f32,
+    /// Per-object character controls; only the active object's fields are used.
+    pub character: CharacterParams,
 }
 
 impl Default for VoiceControls {
     fn default() -> Self {
         Self {
-            complex_algo: 0,
             env_attack: 0.05,
             env_decay: 0.3,
             env_sustain: 0.7,
@@ -329,6 +328,7 @@ impl Default for VoiceControls {
             thickness: 0.5,
             heat: 0.0,
             sludge: 0.0,
+            character: CharacterParams::default(),
         }
     }
 }
@@ -729,33 +729,21 @@ impl Voice {
         let velocity_norm = (velocity / 127.0).clamp(0.0, 1.0);
         let clamped_damage = damage.clamp(0.0, 10.0);
         self.damage_amount = clamped_damage;
-        self.resonator = if controls.complex_algo != 0 {
-            ModalResonator::with_algorithm_controls_and_note(
-                profile_id,
-                SizeScale::new(size),
-                RustAmount::new(rust),
-                DamageAmount::new(clamped_damage),
-                ThicknessAmount::new(controls.thickness),
-                HeatAmount::new(controls.heat),
-                SludgeAmount::new(controls.sludge),
-                midi_to_hz(note),
-                controls.res_damping,
-                controls.res_brightness,
-            )
-        } else {
-            ModalResonator::with_profile_controls_and_note(
-                profile_id,
-                SizeScale::new(size),
-                RustAmount::new(rust),
-                DamageAmount::new(clamped_damage),
-                ThicknessAmount::new(controls.thickness),
-                HeatAmount::new(controls.heat),
-                SludgeAmount::new(controls.sludge),
-                midi_to_hz(note),
-                controls.res_damping,
-                controls.res_brightness,
-            )
-        };
+        // The algorithmic per-object generator is the only resonator path; the
+        // profile tables now contribute only mode counts (see core.rs).
+        self.resonator = ModalResonator::with_algorithm_controls_and_note(
+            profile_id,
+            SizeScale::new(size),
+            RustAmount::new(rust),
+            DamageAmount::new(clamped_damage),
+            ThicknessAmount::new(controls.thickness),
+            HeatAmount::new(controls.heat),
+            SludgeAmount::new(controls.sludge),
+            midi_to_hz(note),
+            controls.res_damping,
+            controls.res_brightness,
+            controls.character,
+        );
         self.resonator.set_interaction_params(
             controls.strike_position,
             controls.coupling_stiffness,
@@ -1430,11 +1418,19 @@ mod tests {
     }
 
     #[test]
-    fn complex_algo_toggle_changes_resonator_output() {
-        let mut modal_voice = Voice::new();
-        let mut complex_voice = Voice::new();
+    fn character_param_changes_resonator_output() {
+        // A curated per-object character control (Plate Aspect) must
+        // measurably change the resonator output now that the algorithmic
+        // path is the only path.
+        let mut square_voice = Voice::new();
+        let mut rect_voice = Voice::new();
 
-        modal_voice.note_on_with_controls(
+        let mut square = VoiceControls::default();
+        square.character.plate_aspect = 1.0;
+        let mut rect = VoiceControls::default();
+        rect.character.plate_aspect = 4.0;
+
+        square_voice.note_on_with_controls(
             60,
             100.0,
             ModalProfileId::Plate,
@@ -1443,12 +1439,9 @@ mod tests {
             0.0,
             0.0,
             2,
-            VoiceControls {
-                complex_algo: 0,
-                ..VoiceControls::default()
-            },
+            square,
         );
-        complex_voice.note_on_with_controls(
+        rect_voice.note_on_with_controls(
             60,
             100.0,
             ModalProfileId::Plate,
@@ -1457,27 +1450,95 @@ mod tests {
             0.0,
             0.0,
             2,
-            VoiceControls {
-                complex_algo: 1,
-                ..VoiceControls::default()
-            },
+            rect,
         );
 
         let sample_rate = 48_000u32;
-        let mut modal_energy = 0.0f32;
-        let mut complex_energy = 0.0f32;
+        let mut square_energy = 0.0f32;
+        let mut rect_energy = 0.0f32;
         for _ in 0..2048 {
-            let modal_sample = modal_voice.process_sample(sample_rate);
-            let complex_sample = complex_voice.process_sample(sample_rate);
-            assert!(modal_sample.is_finite());
-            assert!(complex_sample.is_finite());
-            modal_energy += modal_sample.abs();
-            complex_energy += complex_sample.abs();
+            let s = square_voice.process_sample(sample_rate);
+            let r = rect_voice.process_sample(sample_rate);
+            assert!(s.is_finite());
+            assert!(r.is_finite());
+            square_energy += s.abs();
+            rect_energy += r.abs();
         }
 
         assert!(
-            (modal_energy - complex_energy).abs() > 0.01,
-            "complex algo toggle should measurably change resonator output"
+            (square_energy - rect_energy).abs() > 0.01,
+            "plate aspect character param should measurably change resonator output"
+        );
+    }
+
+    #[test]
+    fn chain_resonator_tracks_pitch() {
+        // Chain previously ignored the MIDI note; the fundamental must now
+        // follow the note like the other objects.
+        let mut low_voice = Voice::new();
+        let mut high_voice = Voice::new();
+
+        low_voice.note_on(45, 100.0, ModalProfileId::Chain, 0, 1.0, 0.0, 0.0, 2);
+        high_voice.note_on(69, 100.0, ModalProfileId::Chain, 0, 1.0, 0.0, 0.0, 2);
+
+        let low = low_voice.resonator.modes[0].spec.frequency_hz;
+        let high = high_voice.resonator.modes[0].spec.frequency_hz;
+        assert!(
+            high > low * 1.5,
+            "expected higher note to raise the chain cluster: low={low}, high={high}"
+        );
+    }
+
+    #[test]
+    fn taut_cable_dynamic_hook_changes_output() {
+        // With the tension-drop hook wired into the per-sample loop, a large
+        // tension drop must measurably change the cable's output versus none.
+        let mut stiff_voice = Voice::new();
+        let mut boing_voice = Voice::new();
+
+        let mut stiff = VoiceControls::default();
+        stiff.character.cable_tension_drop = 0.0;
+        let mut boing = VoiceControls::default();
+        boing.character.cable_tension_drop = 1.0;
+
+        stiff_voice.note_on_with_controls(
+            48,
+            127.0,
+            ModalProfileId::TautCable,
+            0,
+            1.0,
+            0.0,
+            0.0,
+            4,
+            stiff,
+        );
+        boing_voice.note_on_with_controls(
+            48,
+            127.0,
+            ModalProfileId::TautCable,
+            0,
+            1.0,
+            0.0,
+            0.0,
+            4,
+            boing,
+        );
+
+        let sample_rate = 48_000u32;
+        let mut stiff_energy = 0.0f32;
+        let mut boing_energy = 0.0f32;
+        for _ in 0..4096 {
+            let s = stiff_voice.process_sample(sample_rate);
+            let b = boing_voice.process_sample(sample_rate);
+            assert!(s.is_finite());
+            assert!(b.is_finite());
+            stiff_energy += s.abs();
+            boing_energy += b.abs();
+        }
+
+        assert!(
+            (stiff_energy - boing_energy).abs() > 0.01,
+            "tension-drop dynamic hook should change output: stiff={stiff_energy}, boing={boing_energy}"
         );
     }
 }

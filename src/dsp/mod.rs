@@ -30,7 +30,7 @@ pub use post_processing::{
 };
 pub use profile::{ModalModeSpec, ModalProfile, ModalProfileId};
 pub use resonators::{
-    CoilSpringResonator, IBeamResonator, IndustrialCogResonator, ModalResonator,
+    CharacterParams, CoilSpringResonator, IBeamResonator, IndustrialCogResonator, ModalResonator,
     ResonatorCoefficients, ResonatorCore, SecondOrderMode, SheetMetalResonator, TautCableResonator,
 };
 pub use transforms::{

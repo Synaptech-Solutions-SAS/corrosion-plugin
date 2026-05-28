@@ -21,6 +21,22 @@ impl SheetMetalResonator {
             edge_damping: 0.3,
         }
     }
+
+    /// Build a sheet from the exposed character control; size and edge damping
+    /// stay covered by the global Size/Damping path.
+    pub fn with_character(metal_thinness: f32) -> Self {
+        Self {
+            sheet_size: 0.5,
+            metal_thinness,
+            edge_damping: 0.3,
+        }
+    }
+
+    /// Buckling warp multiplier from the running low-frequency displacement.
+    /// Bounded so the chaotic warp cannot diverge.
+    pub fn warp_factor(&self, lf_displacement: f32) -> f32 {
+        (1.0 + self.metal_thinness * lf_displacement * lf_displacement * 10.0).clamp(0.25, 4.0)
+    }
 }
 
 impl Default for SheetMetalResonator {
@@ -54,7 +70,7 @@ impl ResonatorAlgorithm for SheetMetalResonator {
     /// Dynamic buckling: frequencies wobble based on LF displacement
     /// Warp_factor(t) = 1 + β * (sum LF displacement)^2
     fn apply_warping(&mut self, modes: &mut [ModalModeSpec], lf_displacement: f32) {
-        let warp = 1.0 + self.metal_thinness * lf_displacement * lf_displacement * 10.0;
+        let warp = self.warp_factor(lf_displacement);
         for mode in modes.iter_mut() {
             mode.frequency_hz *= warp;
         }

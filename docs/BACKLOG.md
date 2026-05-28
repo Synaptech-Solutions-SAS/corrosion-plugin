@@ -43,7 +43,7 @@ Each item notes the relevant file(s) and an acceptance check.
 
 ---
 
-## Approved change — Algorithmic resonator engine (decided 2026-05, not yet implemented)
+## Approved change — Algorithmic resonator engine (decided 2026-05, IMPLEMENTED 2026-05-27)
 
 Decision (with sign-off): promote the per-object **algorithmic** resonator path to
 the **only** path, remove the `complex_algo` toggle, and expose a curated set of
@@ -52,13 +52,18 @@ per-object "character" parameters. Profile tables (`src/dsp/profiles/`) are kept
 timbre of every object will change (accepted). See `docs/ARCHITECTURE.md` §5 and
 `docs/detailed-specs/resonator-algorithms.md` for the design.
 
-- [ ] **[CHORE] Remove `complex_algo`.** Drop the param + `complex_algo_param`
+*Implemented 2026-05-27: algorithmic path is now the sole resonator engine,
+`complex_algo` is gone, all 14 character params are exposed and threaded, Chain/Tank
+pitch-track the note, and the Cable/Sheet dynamic hooks run per sample (verified
+allocation-free by `tests/no_alloc.rs`). All checks below pass.*
+
+- [x] **[CHORE] Remove `complex_algo`.** Dropped the param + `complex_algo_param`
   (`src/params.rs`), the `VoiceControls` field + the `if controls.complex_algo != 0`
-  branch (`src/voice/mod.rs:732`), the snapshot (`src/lib.rs:232`), and the GUI
-  toggle (`src/gui/editor.rs:2542`). Resonator construction becomes unconditionally
+  branch (`src/voice/mod.rs`), the snapshot (`src/lib.rs`), and the GUI
+  toggle (`src/gui/editor.rs`). Resonator construction is now unconditionally
   `with_algorithm_controls_and_note`.
 
-- [ ] **[MISSING] Expose 14 curated per-object character params** and thread them
+- [x] **[MISSING] Expose 14 curated per-object character params** and thread them
   `CorrosionParams` → `VoiceControls` → `generate_algorithm_modes` (replacing the
   `::default()` generator construction in `src/dsp/resonators/core.rs:178`):
 
@@ -85,29 +90,33 @@ timbre of every object will change (accepted). See `docs/ARCHITECTURE.md` §5 an
   `chain_length`, `beam_mass`, `rigidity_damping`, `cable_tension`, `coil_length`,
   `sheet_size`, `edge_damping`, `blade_radius`, `blade_thickness`.
 
-- [ ] **[BUG] Fix algorithmic pitch tracking.** `ChainResonator::generate_modes`
-  ignores `fundamental_hz` (`basic.rs:265`) and `TankResonator`'s cavity mode is a
-  fixed Hz (`basic.rs:201`); make both follow the MIDI note before the algorithmic
-  path becomes the only path.
+- [x] **[BUG] Fix algorithmic pitch tracking.** `ChainResonator::generate_modes`
+  now anchors its GOE cluster to `fundamental_hz` (heavier `link_mass` shifts it
+  lower) and `TankResonator`'s cavity mode follows the note as a deep sub-octave
+  (`basic.rs`); both track the MIDI note.
 
-- [ ] **[MISSING] Wire the dynamic hooks** into the per-sample resonator loop
-  (`ModalResonator::process_sample[_stereo]`): `TautCableResonator::update_dynamic_frequencies`
-  (amplitude→pitch "boing") and `SheetMetalResonator::apply_warping` (buckling
-  warp). Requires the resonator to retain its `ResonatorAlgorithm` instance plus a
-  running amplitude / low-frequency estimate, and to recompute affected mode
-  coefficients. Modest added per-sample work — benchmark it.
+- [x] **[MISSING] Wire the dynamic hooks** into the per-sample resonator loop
+  (`ModalResonator::process_sample[_stereo]`): the cable tension-drop
+  (amplitude→pitch "boing") and sheet-metal buckling warp now run every sample.
+  The resonator retains the relevant algorithm instance (`Dynamics` enum) plus a
+  smoothed amplitude / low-frequency estimate, recomputing affected mode
+  coefficients from each mode's immutable base frequency (no cumulative drift).
+  Verified allocation-free by `tests/no_alloc.rs`.
 
-- [ ] **[CHORE] Preset migration.** Ignore `complex_algo` on load (silent); add the
-  14 new fields with serde defaults so existing presets still open
-  (`src/presets/mod.rs`).
+- [x] **[CHORE] Preset migration.** A legacy `complex_algo` field is ignored on
+  load (serde drops the unknown key); the 14 new fields carry serde defaults so
+  existing presets still open (`src/presets/mod.rs`). Covered by
+  `legacy_complex_algo_field_is_ignored_on_load`.
 
-- [ ] **[CHORE] Profiles → metadata only.** Keep `*_MODAL_PROFILE_MODES` for
-  `mode_count` / `budget` / tests; remove their role in sound generation.
+- [x] **[CHORE] Profiles → metadata only.** `*_MODAL_PROFILE_MODES` now feed only
+  `mode_count` (via `ModalProfile::from_id(..).mode_count()` in
+  `generate_algorithm_modes`); they no longer drive sound generation.
 
-- [ ] **[CHORE] Tests & docs.** Replace `complex_algo_toggle_changes_resonator_output`
-  (`src/voice/mod.rs`) and the `complex_algo` assertions in `tests/preset_roundtrip.rs`;
-  add per-object character + dynamic-hook tests; reconcile docs (done at decision
-  time: `ARCHITECTURE.md` §5, `resonator-algorithms.md`, PRD §0).
+- [x] **[CHORE] Tests & docs.** Replaced `complex_algo_toggle_changes_resonator_output`
+  with `character_param_changes_resonator_output`, added `chain_resonator_tracks_pitch`
+  and `taut_cable_dynamic_hook_changes_output` (`src/voice/mod.rs`); updated
+  `tests/preset_roundtrip.rs` (character-param roundtrip + legacy-field migration);
+  reconciled docs (`ARCHITECTURE.md` §5, `resonator-algorithms.md`).
 
 > **Interaction with P1 "held-note automation":** these new params are snapshotted
 > at note-on like every other voice control, so they will not update during a
