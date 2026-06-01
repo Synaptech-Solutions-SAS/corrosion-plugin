@@ -27,20 +27,30 @@ jobs:
         uses: actions/checkout@v4
 
       # Install the native toolchain pieces needed by the gnu GUI build.
-      # The egui/glow stack pulls in `x11` (build script needs `pkg-config gl`),
-      # `xcursor`, and `xkbcommon` transitively; without these the GUI-capable
-      # lib lane fails at link time on the Linux runner.
+      # The `x11` crate's build script probes a long list of X11 libraries via
+      # pkg-config (xlib, xext, xrender, xcursor, xrandr, xi, xft, xinerama,
+      # xtst, xau, xxf86vm, …) and GL via `gl.pc`. egui-baseview / xkbcommon
+      # add their own. We install the union here so the GUI-capable lib lane
+      # and the bundle script both build without paper-cuts.
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             pkg-config \
             libx11-dev \
+            libxau-dev \
             libxcb1-dev \
             libxcursor-dev \
+            libxext-dev \
+            libxfixes-dev \
+            libxft-dev \
+            libxi-dev \
+            libxinerama-dev \
             libxkbcommon-dev \
             libxrandr-dev \
-            libxi-dev \
+            libxrender-dev \
+            libxtst-dev \
+            libxxf86vm-dev \
             libgl-dev
 
       # Keep the Rust toolchain explicit and reproducible in CI.
