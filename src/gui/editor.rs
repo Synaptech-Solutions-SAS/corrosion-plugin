@@ -1,9 +1,14 @@
+use include_dir::{include_dir, Dir};
 use nih_plug::params::persist::PersistentField;
 use nih_plug::prelude::*;
 use nih_plug_egui::{create_egui_editor, egui, resizable_window::ResizableWindow, EguiState};
-use std::fs;
-use std::path::PathBuf;
 use std::sync::Arc;
+
+/// Factory presets embedded at compile time so the shipped `.vst3`/`.clap` is
+/// self-contained. The previous `fs::read_dir(env!("CARGO_MANIFEST_DIR")/...)`
+/// lookup only ever resolved on the build host — once the bundle was copied to
+/// a user's plugin folder, the preset bank silently disappeared.
+static FACTORY_PRESETS_DIR: Dir<'_> = include_dir!("$CARGO_MANIFEST_DIR/presets/factory");
 
 use crate::params::{exciter_model_items, CorrosionParams, ExciterFamily, ExciterType, Object};
 use crate::Preset;
@@ -46,7 +51,7 @@ struct EditorUiState {
 #[derive(Clone)]
 struct FactoryPresetEntry {
     name: String,
-    path: PathBuf,
+    json: &'static str,
 }
 
 #[derive(Clone, Copy)]
@@ -1862,7 +1867,7 @@ fn render_preset_loader(
                         state.selected_factory_preset - 1
                     };
                     let entry = state.factory_presets[state.selected_factory_preset].clone();
-                    if let Ok(preset) = Preset::load(&entry.path) {
+                    if let Ok(preset) = Preset::from_json_str(entry.json) {
                         apply_preset(params, setter, &preset);
                     }
                 }
@@ -1887,7 +1892,7 @@ fn render_preset_loader(
                                 .clicked()
                             {
                                 state.selected_factory_preset = index;
-                                if let Ok(loaded) = Preset::load(&preset.path) {
+                                if let Ok(loaded) = Preset::from_json_str(preset.json) {
                                     apply_preset(params, setter, &loaded);
                                 }
                             }
@@ -1906,7 +1911,7 @@ fn render_preset_loader(
                     state.selected_factory_preset =
                         (state.selected_factory_preset + 1) % state.factory_presets.len();
                     let entry = state.factory_presets[state.selected_factory_preset].clone();
-                    if let Ok(preset) = Preset::load(&entry.path) {
+                    if let Ok(preset) = Preset::from_json_str(entry.json) {
                         apply_preset(params, setter, &preset);
                     }
                 }
@@ -2080,23 +2085,20 @@ fn apply_preset(params: &CorrosionParams, setter: &ParamSetter, preset: &Preset)
 }
 
 fn load_factory_presets() -> Vec<FactoryPresetEntry> {
-    let preset_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("presets/factory");
-    let Ok(entries) = fs::read_dir(preset_dir) else {
-        return Vec::new();
-    };
-
-    let mut presets: Vec<_> = entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.extension()
+    let mut presets: Vec<_> = FACTORY_PRESETS_DIR
+        .files()
+        .filter(|file| {
+            file.path()
+                .extension()
                 .and_then(|extension| extension.to_str())
                 .is_some_and(|extension| extension == "corrosion-preset")
         })
-        .filter_map(|path| {
-            Preset::load(&path).ok().map(|preset| FactoryPresetEntry {
+        .filter_map(|file| {
+            let json = file.contents_utf8()?;
+            let preset = Preset::from_json_str(json).ok()?;
+            Some(FactoryPresetEntry {
                 name: preset.name,
-                path,
+                json,
             })
         })
         .collect();

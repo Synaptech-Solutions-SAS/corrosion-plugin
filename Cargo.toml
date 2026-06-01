@@ -24,6 +24,7 @@ nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug", optional = tr
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+include_dir = "0.7"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 nih-plug = { package = "nih_plug", git = "https://github.com/robbert-vdh/nih-plug", features = ["assert_process_allocs"] }
