@@ -975,6 +975,10 @@ impl Voice {
     /// Only the active (held) voices receive updates so tails decay with the
     /// timbre they had at note-on. Allocation-free; recomputes resonator mode
     /// coefficients and interaction-bus state in place.
+    // Mirrors `VoiceManager::update_live_controls` so the per-buffer host
+    // parameter shape stays positional. Grouping into a struct would force
+    // a wider refactor across the lib.rs → manager → voice call chain.
+    #[allow(clippy::too_many_arguments)]
     pub fn update_live_controls(
         &mut self,
         damping: f32,
@@ -1662,10 +1666,14 @@ mod tests {
         let mut eco_voice = Voice::new();
         let mut render_voice = Voice::new();
 
-        let mut eco = VoiceControls::default();
-        eco.mode_count_scale = 0.5;
-        let mut render = VoiceControls::default();
-        render.mode_count_scale = 2.0;
+        let eco = VoiceControls {
+            mode_count_scale: 0.5,
+            ..VoiceControls::default()
+        };
+        let render = VoiceControls {
+            mode_count_scale: 2.0,
+            ..VoiceControls::default()
+        };
 
         eco_voice.note_on_with_controls(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2, eco);
         render_voice.note_on_with_controls(

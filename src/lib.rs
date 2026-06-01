@@ -633,10 +633,8 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
         // CC1 mod wheel is the only CC we currently route. Other CCs are
         // ignored but reach the plugin so a future expansion can pick them up
         // without changing MidiConfig.
-        NoteEvent::MidiCC { cc, value, .. } => {
-            if cc == 1 {
-                plugin.voice_manager.set_mod_wheel(value);
-            }
+        NoteEvent::MidiCC { cc: 1, value, .. } => {
+            plugin.voice_manager.set_mod_wheel(value);
         }
         _ => {}
     }
