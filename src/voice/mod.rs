@@ -1667,17 +1667,7 @@ mod tests {
         let mut render = VoiceControls::default();
         render.mode_count_scale = 2.0;
 
-        eco_voice.note_on_with_controls(
-            60,
-            100.0,
-            ModalProfileId::Pipe,
-            0,
-            1.0,
-            0.0,
-            0.0,
-            2,
-            eco,
-        );
+        eco_voice.note_on_with_controls(60, 100.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 2, eco);
         render_voice.note_on_with_controls(
             60,
             100.0,
@@ -1710,7 +1700,17 @@ mod tests {
             ..VoiceControls::default()
         };
         // Pneumatic jet sustains as long as the note is held.
-        voice.note_on_with_controls(60, 127.0, ModalProfileId::Pipe, 0, 1.0, 0.0, 0.0, 13, bright);
+        voice.note_on_with_controls(
+            60,
+            127.0,
+            ModalProfileId::Pipe,
+            0,
+            1.0,
+            0.0,
+            0.0,
+            13,
+            bright,
+        );
 
         let sample_rate = 48_000u32;
         for _ in 0..4_096 {

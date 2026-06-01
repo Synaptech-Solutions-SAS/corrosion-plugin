@@ -75,8 +75,7 @@ impl LorenzDrive {
     /// Processes one sample through the chaotic drive path.
     pub fn process(&mut self, input: f32) -> f32 {
         // Smooth drive automation at audio rate.
-        self.drive_amount +=
-            (self.target_drive_amount - self.drive_amount) * self.smoothing_coeff;
+        self.drive_amount += (self.target_drive_amount - self.drive_amount) * self.smoothing_coeff;
         if self.drive_amount < 0.001 {
             return input;
         }

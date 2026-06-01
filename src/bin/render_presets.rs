@@ -1,9 +1,9 @@
 use clap::Parser;
-use corrosion::dsp::BodyResonator;
+use corrosion::dsp::{BodyResonator, CharacterParams};
 use corrosion::offline::{render_behavior_metrics, RenderConfig};
 use corrosion::presets::Preset;
-use corrosion::voice::VoiceManager;
-use corrosion::{apply_drive, apply_output_limiter, Object};
+use corrosion::voice::{VoiceControls, VoiceManager};
+use corrosion::{apply_drive, apply_output_limiter, Object, PlayMode, QualityMode};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -97,6 +97,147 @@ fn summarize_samples(samples: &[f32]) -> SampleSummary {
     }
 }
 
+/// Map the active QualityMode to the resonator mode-count scale. Mirror of
+/// `lib.rs::quality_mode_count_scale` — duplicated here so the renderer
+/// doesn't depend on a private fn.
+fn quality_mode_count_scale(mode: QualityMode) -> f32 {
+    match mode {
+        QualityMode::Eco => 0.5,
+        QualityMode::Normal => 1.0,
+        QualityMode::High => 1.5,
+        QualityMode::Render => 2.0,
+    }
+}
+
+/// Build a full `VoiceControls` snapshot from a loaded preset so the renderer
+/// triggers exciters with the same per-knob configuration the plugin would
+/// at run time. Without this the renderer falls back to `VoiceControls::default()`,
+/// which silently disables exciter-specific behavior (TensionSnap thresholds,
+/// HeavyGrinding pressure, MSEG loop in Drone mode, character params, …).
+fn voice_controls_from_preset(preset: &Preset) -> VoiceControls {
+    let extra = &preset.extra;
+    let mut controls = VoiceControls {
+        env_attack: extra.env_attack,
+        env_decay: extra.env_decay,
+        env_sustain: extra.env_sustain,
+        env_release: extra.env_release,
+        mseg_onset: extra.mseg_onset,
+        mseg_attack: extra.mseg_attack,
+        mseg_hold: extra.mseg_hold,
+        mseg_decay: extra.mseg_decay,
+        mseg_sustain: extra.mseg_sustain,
+        mseg_release: extra.mseg_release,
+        env_amount: extra.env_amount,
+        velocity_to_peak: extra.velocity_to_peak,
+        loop_mode: extra.loop_mode,
+        loop_start_stage: extra.loop_start_stage,
+        loop_end_stage: extra.loop_end_stage,
+        global_time_scale: extra.global_time_scale,
+        velocity_to_level: extra.velocity_to_level,
+        velocity_to_time: extra.velocity_to_time,
+        curve_tension: extra.curve_tension,
+        exciter_pressure: extra.exciter_pressure,
+        exciter_speed: extra.exciter_speed,
+        exciter_roughness: extra.exciter_roughness,
+        hand_mass: extra.hand_mass,
+        flesh_stiffness: extra.flesh_stiffness,
+        flesh_damping: extra.flesh_damping,
+        mute_decay: extra.mute_decay,
+        mallet_mass: extra.mallet_mass,
+        felt_softness: extra.felt_softness,
+        core_hardness: extra.core_hardness,
+        compression_curve: extra.compression_curve,
+        material_stiffness: extra.material_stiffness,
+        impact_damping: extra.impact_damping,
+        stick_mass: extra.stick_mass,
+        tip_stiffness: extra.tip_stiffness,
+        restitution_bounciness: extra.restitution_bounciness,
+        micro_bounce_limit: extra.micro_bounce_limit,
+        wire_density: extra.wire_density,
+        spread_duration: extra.spread_duration,
+        brush_wire_stiffness: extra.brush_wire_stiffness,
+        amplitude_randomization: extra.amplitude_randomization,
+        pipe_mass: extra.pipe_mass,
+        metal_stiffness: extra.metal_stiffness,
+        pipe_pitch: extra.pipe_pitch,
+        pipe_ring_decay: extra.pipe_ring_decay,
+        link_count: extra.link_count,
+        chain_mass: extra.chain_mass,
+        drop_envelope_spread: extra.drop_envelope_spread,
+        internal_rattle: extra.internal_rattle,
+        rattle_color: extra.rattle_color,
+        bow_pressure: extra.bow_pressure,
+        bow_speed: extra.bow_speed,
+        rosin_grip: extra.rosin_grip,
+        slip_curve: extra.slip_curve,
+        scrape_speed: extra.scrape_speed,
+        point_pressure: extra.point_pressure,
+        chatter_pitch: extra.chatter_pitch,
+        chatter_damping: extra.chatter_damping,
+        grind_speed: extra.grind_speed,
+        grind_pressure: extra.grind_pressure,
+        surface_grit: extra.surface_grit,
+        grit_color: extra.grit_color,
+        drag_speed: extra.drag_speed,
+        ridge_spacing: extra.ridge_spacing,
+        ridge_depth: extra.ridge_depth,
+        drag_exciter_mass: extra.drag_exciter_mass,
+        pull_speed: extra.pull_speed,
+        break_threshold: extra.break_threshold,
+        slip_stochasticity: extra.slip_stochasticity,
+        creak_sharpness: extra.creak_sharpness,
+        air_pressure: extra.air_pressure,
+        nozzle_width: extra.nozzle_width,
+        turbulence_chaos: extra.turbulence_chaos,
+        mains_frequency: extra.mains_frequency,
+        coil_proximity: extra.coil_proximity,
+        voltage_sag: extra.voltage_sag,
+        pull_distance: extra.pull_distance,
+        hook_stiffness: extra.hook_stiffness,
+        snap_force: extra.snap_force,
+        flow_rate: extra.flow_rate,
+        particle_mass: extra.particle_mass,
+        mass_variance: extra.mass_variance,
+        strike_position: extra.strike_position,
+        coupling_stiffness: extra.coupling_stiffness,
+        position_wander: extra.position_wander,
+        position_envelope: extra.position_envelope,
+        fundamental_anchor: extra.fundamental_anchor,
+        res_damping: extra.res_damping,
+        res_brightness: extra.res_brightness,
+        thickness: extra.thickness,
+        heat: extra.heat,
+        sludge: extra.sludge,
+        character: CharacterParams {
+            pipe_diameter: extra.pipe_diameter,
+            plate_aspect: extra.plate_aspect,
+            plate_stiffness: extra.plate_stiffness,
+            tank_volume: extra.tank_volume,
+            tank_cavity_mix: extra.tank_cavity_mix,
+            chain_link_mass: extra.chain_link_mass,
+            chain_instability: extra.chain_instability,
+            beam_shear: extra.beam_shear,
+            cable_braid: extra.cable_braid,
+            cable_tension_drop: extra.cable_tension_drop,
+            spring_dispersion: extra.spring_dispersion,
+            spring_slosh: extra.spring_slosh,
+            sheet_thinness: extra.sheet_thinness,
+            cog_dissonance: extra.cog_dissonance,
+        },
+        mode_count_scale: quality_mode_count_scale(QualityMode::from_int(preset.quality_mode)),
+    };
+
+    // Drone mode forces the friction MSEG into a sustained loop (matches the
+    // `handle_note_event` Drone branch in `lib.rs`).
+    if matches!(PlayMode::from_int(preset.play_mode), PlayMode::Drone) {
+        controls.loop_mode = 1; // Forward
+        controls.loop_start_stage = 3;
+        controls.loop_end_stage = 4;
+    }
+
+    controls
+}
+
 fn render_preset(
     preset: &Preset,
     note: u8,
@@ -119,7 +260,7 @@ fn render_preset(
         Object::IndustrialCog => corrosion::dsp::ModalProfileId::IndustrialCog,
     };
 
-    voice_manager.note_on(
+    voice_manager.note_on_with_controls(
         note,
         velocity,
         profile,
@@ -127,6 +268,7 @@ fn render_preset(
         preset.rust,
         preset.damage,
         preset.exciter,
+        voice_controls_from_preset(preset),
     );
 
     let mut output = Vec::with_capacity(frame_count);

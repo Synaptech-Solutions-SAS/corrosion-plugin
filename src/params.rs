@@ -1213,7 +1213,9 @@ pub fn limiter_mode_param(default: i32) -> IntParam {
 /// Build the play-mode `IntParam` with mappings for Tonal/Kit/Drone.
 pub fn play_mode_param(default: i32) -> IntParam {
     IntParam::new("Play Mode", default, IntRange::Linear { min: 0, max: 2 })
-        .with_value_to_string(Arc::new(|value| PlayMode::from_int(value).name().to_string()))
+        .with_value_to_string(Arc::new(|value| {
+            PlayMode::from_int(value).name().to_string()
+        }))
         .with_string_to_value(Arc::new(|string| {
             let normalized = string.trim();
             [PlayMode::Tonal, PlayMode::Kit, PlayMode::Drone]
@@ -1766,11 +1768,7 @@ impl Default for CorrosionParams {
 
             // Macro defaults — 0.5 is the neutral midpoint so existing presets
             // sound unchanged until the user actively dials a macro.
-            macro_mass: FloatParam::new(
-                "Mass",
-                0.5,
-                FloatRange::Linear { min: 0.0, max: 1.0 },
-            ),
+            macro_mass: FloatParam::new("Mass", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
             macro_corrosion: FloatParam::new(
                 "Corrosion",
                 0.5,

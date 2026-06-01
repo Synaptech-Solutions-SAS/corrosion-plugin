@@ -379,8 +379,7 @@ pub fn apply_drive(sample: f32, drive: f32) -> f32 {
             let t = (abs_sample - DRIVE_POS_SOFT_THRESHOLD)
                 / (DRIVE_POS_HARD_THRESHOLD - DRIVE_POS_SOFT_THRESHOLD);
             let eased = DRIVE_POS_SOFT_THRESHOLD
-                + (DRIVE_POS_HARD_THRESHOLD - DRIVE_POS_SOFT_THRESHOLD)
-                    * (t * t * (3.0 - 2.0 * t));
+                + (DRIVE_POS_HARD_THRESHOLD - DRIVE_POS_SOFT_THRESHOLD) * (t * t * (3.0 - 2.0 * t));
             sign * eased
         } else {
             // Hard limiting with exponential decay tail
@@ -399,8 +398,7 @@ pub fn apply_drive(sample: f32, drive: f32) -> f32 {
             let t = (abs_sample - DRIVE_NEG_SOFT_THRESHOLD)
                 / (DRIVE_NEG_HARD_THRESHOLD - DRIVE_NEG_SOFT_THRESHOLD);
             let eased = DRIVE_NEG_SOFT_THRESHOLD
-                + (DRIVE_NEG_HARD_THRESHOLD - DRIVE_NEG_SOFT_THRESHOLD)
-                    * (t * t * (3.0 - 2.0 * t));
+                + (DRIVE_NEG_HARD_THRESHOLD - DRIVE_NEG_SOFT_THRESHOLD) * (t * t * (3.0 - 2.0 * t));
             sign * eased
         } else {
             // Hard limiting with tighter ceiling for negative excursions
@@ -440,9 +438,7 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
             let play_mode = PlayMode::from_int(plugin.params.play_mode.value());
             let object = match play_mode {
                 PlayMode::Kit => note_to_kit_object(note),
-                PlayMode::Tonal | PlayMode::Drone => {
-                    Object::from_int(plugin.params.object.value())
-                }
+                PlayMode::Tonal | PlayMode::Drone => Object::from_int(plugin.params.object.value()),
             };
 
             // Map the Object parameter to a modal profile for the resonator
@@ -598,8 +594,7 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
 
             // Macro-biased note-on inputs.
             let biased_size = (plugin.params.size.value() * bias.size_factor).clamp(0.05, 10.0);
-            let biased_rust =
-                (plugin.params.rust.value() + bias.rust_offset).clamp(0.0, 5.0);
+            let biased_rust = (plugin.params.rust.value() + bias.rust_offset).clamp(0.0, 5.0);
             let biased_damage =
                 (plugin.params.damage.value() + bias.damage_offset).clamp(0.0, 10.0);
 
@@ -624,11 +619,8 @@ fn handle_note_event(plugin: &mut Corrosion, event: NoteEvent<()>) {
         // Convert to semitones using the standard ±2 default range so a plain
         // MIDI controller bends an expected interval.
         NoteEvent::MidiPitchBend { value, .. } => {
-            let semitones =
-                (value - 0.5) * 2.0 * voice::PITCH_BEND_RANGE_SEMITONES;
-            plugin
-                .voice_manager
-                .set_pitch_bend_semitones(semitones);
+            let semitones = (value - 0.5) * 2.0 * voice::PITCH_BEND_RANGE_SEMITONES;
+            plugin.voice_manager.set_pitch_bend_semitones(semitones);
         }
         // Channel aftertouch — broadcasts to every voice on the channel.
         NoteEvent::MidiChannelPressure { pressure, .. } => {
@@ -1294,8 +1286,9 @@ mod tests {
 
         let mut bright_plugin = Corrosion::default();
         let mut corroded_plugin = Corrosion::default();
-        Arc::get_mut(&mut corroded_plugin.params).unwrap().macro_corrosion =
-            float_param_for_test("Corrosion", 1.0, 0.0, 1.0);
+        Arc::get_mut(&mut corroded_plugin.params)
+            .unwrap()
+            .macro_corrosion = float_param_for_test("Corrosion", 1.0, 0.0, 1.0);
 
         let event = NoteEvent::NoteOn {
             timing: 0,
@@ -1309,7 +1302,12 @@ mod tests {
 
         let sample_rate = 48_000u32;
         let bright_energy: f32 = (0..8_192)
-            .map(|_| bright_plugin.voice_manager.process_sample(sample_rate).abs())
+            .map(|_| {
+                bright_plugin
+                    .voice_manager
+                    .process_sample(sample_rate)
+                    .abs()
+            })
             .sum();
         let corroded_energy: f32 = (0..8_192)
             .map(|_| {
@@ -1499,8 +1497,7 @@ mod tests {
         Arc::get_mut(&mut plugin.params).unwrap().play_mode =
             play_mode_param(PlayMode::Drone.to_int());
         // Pick a friction exciter (Bow = 1).
-        Arc::get_mut(&mut plugin.params).unwrap().exciter =
-            crate::params::exciter_param(1);
+        Arc::get_mut(&mut plugin.params).unwrap().exciter = crate::params::exciter_param(1);
 
         handle_note_event(
             &mut plugin,

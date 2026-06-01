@@ -62,11 +62,7 @@ pub fn migrate_preset_json(mut value: serde_json::Value) -> serde_json::Value {
                 break;
             }
         }
-        if value
-            .get("version")
-            .and_then(serde_json::Value::as_str)
-            == Some(PRESET_VERSION)
-        {
+        if value.get("version").and_then(serde_json::Value::as_str) == Some(PRESET_VERSION) {
             break;
         }
     }
@@ -659,8 +655,7 @@ impl Preset {
     /// before typed deserialization. Used both by `load` and by the host
     /// state-restore path so plugin state and on-disk presets behave the same.
     pub fn from_json_str(json: &str) -> io::Result<Self> {
-        let raw: serde_json::Value =
-            serde_json::from_str(json).map_err(io::Error::other)?;
+        let raw: serde_json::Value = serde_json::from_str(json).map_err(io::Error::other)?;
         let migrated = migrate_preset_json(raw);
         let preset: Self = serde_json::from_value(migrated).map_err(io::Error::other)?;
         Ok(preset.sanitized())

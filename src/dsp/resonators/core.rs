@@ -161,8 +161,7 @@ impl SecondOrderMode {
         sample_rate: u32,
     ) {
         let damping_scale = (1.0 + (0.5 - damping.clamp(0.0, 1.0)) * 1.2).max(0.1);
-        let brightness_tilt =
-            1.0 + (brightness.clamp(0.0, 1.0) - 0.5) * (0.5 + 1.0 * mode_weight);
+        let brightness_tilt = 1.0 + (brightness.clamp(0.0, 1.0) - 0.5) * (0.5 + 1.0 * mode_weight);
         self.spec.decay_seconds = (self.base_decay_seconds * damping_scale).max(f32::EPSILON);
         self.spec.gain = (self.base_gain * brightness_tilt.max(0.1)).max(f32::EPSILON);
         self.coefficients = ResonatorCoefficients::for_mode(self.spec, sample_rate);

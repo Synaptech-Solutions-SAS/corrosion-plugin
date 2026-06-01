@@ -829,8 +829,7 @@ mod tests {
         // is the regression line, not the current measured value.
         const ALIAS_RATIO_BUDGET_DB: f32 = -10.0;
 
-        let report =
-            analyze_post_chain_aliasing_at_quality(48_000, 4_096, PostQualityMode::Render);
+        let report = analyze_post_chain_aliasing_at_quality(48_000, 4_096, PostQualityMode::Render);
         assert!(
             report.alias_ratio_db < ALIAS_RATIO_BUDGET_DB,
             "Render alias_ratio_db {} exceeded budget {} dB — clipper or post chain regressed",
@@ -844,10 +843,8 @@ mod tests {
     /// the clipper ever silently goes back to a no-op, this fails.
     #[test]
     fn higher_quality_reduces_alias_ratio() {
-        let eco =
-            analyze_post_chain_aliasing_at_quality(48_000, 4_096, PostQualityMode::Eco);
-        let render =
-            analyze_post_chain_aliasing_at_quality(48_000, 4_096, PostQualityMode::Render);
+        let eco = analyze_post_chain_aliasing_at_quality(48_000, 4_096, PostQualityMode::Eco);
+        let render = analyze_post_chain_aliasing_at_quality(48_000, 4_096, PostQualityMode::Render);
 
         assert!(
             render.alias_ratio_db < eco.alias_ratio_db,

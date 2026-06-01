@@ -636,18 +636,26 @@ fn cable_tension_rise() -> Preset {
 }
 
 fn snapped_cable() -> Preset {
-    // Sharp cable snap — sudden release of tension.
+    // Sharp cable snap — sudden release of tension. Snap_force needs to be low
+    // enough that the tension build trips it inside the voice's ADSR attack
+    // window; otherwise the single-sample impulse lands at ~0 envelope.
     let mut p = base("Snapped Cable");
     p.object = Object::TautCable;
     p.exciter = EX_TENSION_SNAP;
     p.size = 1.3;
     p.damage = 1.8;
     p.drive = 1.2;
-    p.extra.cable_braid = 0.5;
-    p.extra.cable_tension_drop = 0.7;
-    p.extra.pull_distance = 0.85;
-    p.extra.hook_stiffness = 1.4;
-    p.extra.snap_force = 0.75;
+    p.body = 0.8;
+    // Stretch envelope so the snap impulse fires inside an audible window.
+    p.extra.env_attack = 0.005;
+    p.extra.env_decay = 1.5;
+    p.extra.env_sustain = 0.8;
+    p.extra.env_release = 0.5;
+    p.extra.cable_braid = 0.4;
+    p.extra.cable_tension_drop = 0.3;
+    p.extra.pull_distance = 0.5;
+    p.extra.hook_stiffness = 2.0;
+    p.extra.snap_force = 0.3;
     p.extra.macro_violence = 0.7;
     p
 }
@@ -705,19 +713,28 @@ fn spring_drag() -> Preset {
 }
 
 fn spring_grind() -> Preset {
-    // Heavy grinding against a spring — sustained machine noise.
+    // Heavy grinding against a spring — sustained machine noise. Drop Drone
+    // mode here: the friction MSEG sustains the grinding by default for the
+    // 2 s render window, and forcing loop_start_stage=3/end=4 on top of the
+    // CoilSpring's dispersive resonator was producing a self-cancelling
+    // standing wave at our default mseg_sustain level. Higher grind_speed
+    // keeps the relative velocity above the zero-crossing dead-band.
     let mut p = base("Spring Grind");
     p.object = Object::CoilSpring;
     p.exciter = EX_HEAVY_GRINDING;
     p.size = 1.8;
     p.damage = 1.5;
     p.drive = 1.4;
-    p.play_mode = PLAY_MODE_DRONE;
-    p.extra.spring_dispersion = 0.65;
-    p.extra.grind_speed = 0.95;
-    p.extra.grind_pressure = 1.15;
-    p.extra.surface_grit = 0.55;
-    p.extra.macro_violence = 0.7;
+    p.body = 0.6;
+    p.extra.spring_dispersion = 0.5;
+    p.extra.spring_slosh = 0.3;
+    p.extra.grind_speed = 1.5;
+    p.extra.grind_pressure = 1.4;
+    p.extra.surface_grit = 0.6;
+    p.extra.grit_color = 0.45;
+    p.extra.mseg_sustain = 0.8;
+    p.extra.macro_violence = 0.75;
+    p.extra.drive_amount = 0.4;
     p
 }
 

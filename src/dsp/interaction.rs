@@ -258,6 +258,9 @@ mod tests {
         // Mode coefficients must contain at least one non-zero value after
         // initialize; otherwise the resonator path would multiply by zero.
         let sum: f32 = bus.mode_coefficients.iter().map(|c| c.abs()).sum();
-        assert!(sum > 0.0, "Should have non-zero mode coefficients after init");
+        assert!(
+            sum > 0.0,
+            "Should have non-zero mode coefficients after init"
+        );
     }
 }

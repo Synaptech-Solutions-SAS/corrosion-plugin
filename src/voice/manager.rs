@@ -619,8 +619,24 @@ mod tests {
         // Two notes are playing. A pitch bend event should retune both
         // voices' resonators, not just one.
         let mut manager = VoiceManager::new();
-        manager.note_on(60, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 2);
-        manager.note_on(64, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 2);
+        manager.note_on(
+            60,
+            100.0,
+            crate::dsp::ModalProfileId::Pipe,
+            1.0,
+            0.0,
+            0.0,
+            2,
+        );
+        manager.note_on(
+            64,
+            100.0,
+            crate::dsp::ModalProfileId::Pipe,
+            1.0,
+            0.0,
+            0.0,
+            2,
+        );
 
         let baseline_freqs: Vec<f32> = manager
             .voices
@@ -654,7 +670,15 @@ mod tests {
         // the bend event (mirrors how a DAW automates pitch wheel during a run).
         let mut manager = VoiceManager::new();
         manager.set_pitch_bend_semitones(7.0);
-        manager.note_on(60, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 2);
+        manager.note_on(
+            60,
+            100.0,
+            crate::dsp::ModalProfileId::Pipe,
+            1.0,
+            0.0,
+            0.0,
+            2,
+        );
 
         let voice = manager
             .voices
@@ -673,8 +697,24 @@ mod tests {
     #[test]
     fn poly_pressure_targets_only_matching_note() {
         let mut manager = VoiceManager::new();
-        manager.note_on(60, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 2);
-        manager.note_on(64, 100.0, crate::dsp::ModalProfileId::Pipe, 1.0, 0.0, 0.0, 2);
+        manager.note_on(
+            60,
+            100.0,
+            crate::dsp::ModalProfileId::Pipe,
+            1.0,
+            0.0,
+            0.0,
+            2,
+        );
+        manager.note_on(
+            64,
+            100.0,
+            crate::dsp::ModalProfileId::Pipe,
+            1.0,
+            0.0,
+            0.0,
+            2,
+        );
 
         manager.set_poly_pressure(60, 1.0);
 

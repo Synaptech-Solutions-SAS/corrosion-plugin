@@ -120,10 +120,8 @@ impl WdfLadderFilter {
         let cutoff_changed = (self.target_cutoff_hz - self.cutoff_hz).abs() > 0.005;
         let resonance_changed = (self.target_resonance - self.resonance).abs() > 5e-4;
         if cutoff_changed || resonance_changed {
-            self.cutoff_hz +=
-                (self.target_cutoff_hz - self.cutoff_hz) * self.smoothing_coeff;
-            self.resonance +=
-                (self.target_resonance - self.resonance) * self.smoothing_coeff;
+            self.cutoff_hz += (self.target_cutoff_hz - self.cutoff_hz) * self.smoothing_coeff;
+            self.resonance += (self.target_resonance - self.resonance) * self.smoothing_coeff;
             self.update_coefficients();
         }
 
