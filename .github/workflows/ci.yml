@@ -11,6 +11,16 @@ jobs:
   quality-and-build:
     runs-on: ubuntu-latest
 
+    # `.cargo/config.toml` defaults `build.target` to `x86_64-pc-windows-gnu`
+    # for the developer's local Windows host. The Linux CI runner doesn't
+    # have that target installed, so any unqualified `cargo` invocation
+    # (`cargo fmt --check`, `cargo clippy`, `cargo test` without --target)
+    # would otherwise try to compile windows-only deps. Override the build
+    # target at the job level so unqualified cargo commands resolve to the
+    # native musl lane the runner actually has installed.
+    env:
+      CARGO_BUILD_TARGET: x86_64-unknown-linux-musl
+
     steps:
       # Always fetch the repository exactly as CI will validate it.
       - name: Check out repository

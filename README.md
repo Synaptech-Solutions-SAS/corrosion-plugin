@@ -117,7 +117,7 @@ cargo run --bin seed_presets
 cargo bench --no-default-features --target x86_64-unknown-linux-gnu --bench performance
 ```
 
-The repository defaults to `x86_64-unknown-linux-musl` for unqualified local cargo commands through `.cargo/config.toml`. The bundle scripts and the documented plugin packaging flow use the explicit `x86_64-unknown-linux-gnu` target shown above.
+The repository's `.cargo/config.toml` defaults unqualified `cargo` commands to `x86_64-pc-windows-gnu` so the maintainer's Windows host doesn't need to type `--target` constantly. The Linux CI lane overrides this via `CARGO_BUILD_TARGET=x86_64-unknown-linux-musl` in the workflow env; the bundle scripts pass `--target x86_64-unknown-linux-gnu` explicitly. If you're on Linux/macOS and not building Windows DLLs locally, either pass `--target` per command or override the build target with `CARGO_BUILD_TARGET=<your-host-triple>`.
 
 ## Validation
 
