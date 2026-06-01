@@ -3430,9 +3430,12 @@ mod tests {
     fn factory_preset_loader_finds_factory_bank() {
         let presets = load_factory_presets();
 
-        assert_eq!(presets.len(), 60);
-        assert_eq!(presets[0].name, "Anchored Tank Moan");
-        assert_eq!(presets[59].name, "Worn Chain Hail");
+        // The factory bank is seeded by `src/bin/seed_presets.rs`. 50 curated
+        // presets cover every object × major exciter combination, with
+        // alphabetic sort applied inside `load_factory_presets`.
+        assert_eq!(presets.len(), 50);
+        assert_eq!(presets[0].name, "Beam Drag");
+        assert_eq!(presets[49].name, "Workshop Plate Scrape");
     }
 
     #[test]

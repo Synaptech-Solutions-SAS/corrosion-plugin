@@ -334,19 +334,36 @@ allocation-free by `tests/no_alloc.rs`). All checks below pass.*
   `u8` already caps the upper end (note 127 → 12.5 kHz), but the function
   now explicitly clamps via `.min(127)` so the math is robust if a future
   caller passes a wider integer type.
-- [ ] **[CHORE] Extract DSP magic numbers** (drive thresholds in `lib.rs::apply_drive`,
-  body/reverb constants) into named constants where it aids readability.
+- [x] **[CHORE] Extract DSP magic numbers** *(partially fixed 2026-05-29)*
+  Named the eight drive-curve thresholds in `lib.rs::apply_drive`:
+  `DRIVE_GAIN_SCALE`, `DRIVE_POS_SOFT_THRESHOLD` / `DRIVE_POS_HARD_THRESHOLD`
+  / `DRIVE_POS_CEILING`, `DRIVE_NEG_SOFT_THRESHOLD` / `DRIVE_NEG_HARD_THRESHOLD`
+  / `DRIVE_NEG_CEILING`, `DRIVE_OUTPUT_CLAMP`. Body/reverb constants live
+  inside their own modules and are already commented at the call site; the
+  decision is to extract them only when they recur across functions, which
+  they do not today.
 
 ---
 
 ## P4 — Testing & release infrastructure
 
-- [ ] **[MISSING] Aliasing/spectral regression thresholds** (harness exists; no asserted budget — pair with P0 clipper fix).
+- [x] **[MISSING] Aliasing/spectral regression thresholds** *(fixed 2026-05-28
+  as part of P1.2)*. `offline::tests::render_mode_alias_ratio_stays_within_budget`
+  fails if Render's `alias_ratio_db` exceeds -10 dB; `higher_quality_reduces_alias_ratio`
+  fails if Render does not strictly beat Eco. Harness lives in `src/offline/mod.rs`.
 - [ ] **[MISSING] Windows CI lane / bundle smoke** (CI is Linux-only; `bundle-win.sh` untested in automation).
 - [ ] **[MISSING] DAW smoke automation** (REAPER/Bitwig/Ardour/Live/FL) — currently manual.
 - [ ] **[MISSING] GUI interaction/visual regression tests** (headless only today).
 - [ ] **[CHORE] Persist benchmark baselines** so Criterion runs can flag regressions.
 - [ ] **[CHORE] `assert_process_allocs` is disabled on Windows** (`Cargo.toml` target cfg) — document or enable.
+  *Status note 2026-05-29:* the disabled lane is intentional — the
+  `assert_no_alloc` upstream crate uses a thread-local allocator hook that
+  conflicts with Windows' default CRT during nih-plug's test setup, so
+  enabling it without a CRT swap causes process-wide hangs. Linux + macOS
+  CI lanes still run `tests/no_alloc.rs` with the feature on. A Windows fix
+  would require either swapping to `mimalloc`/`jemalloc` or upstreaming
+  Windows support into `assert_no_alloc`; both are out of scope until a
+  Windows CI lane lands.
 
 ---
 

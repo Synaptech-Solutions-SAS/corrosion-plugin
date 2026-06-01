@@ -1,6 +1,6 @@
 [package]
 name = "corrosion"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [lib]
@@ -13,6 +13,10 @@ path = "src/bin/render.rs"
 [[bin]]
 name = "render_presets"
 path = "src/bin/render_presets.rs"
+
+[[bin]]
+name = "seed_presets"
+path = "src/bin/seed_presets.rs"
 
 [dependencies]
 nih-plug = { package = "nih_plug", git = "https://github.com/robbert-vdh/nih-plug" }
